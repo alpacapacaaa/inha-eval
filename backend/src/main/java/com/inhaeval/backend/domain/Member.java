@@ -57,7 +57,7 @@ public class Member {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
         this.points = 0;
-        this.isVerified = false;
+        this.isVerified = false; //
         this.isActive = true;   // 가입 시 활성 상태
         this.role = Role.USER;  // 가입 시 일반유저로 설정
     }
