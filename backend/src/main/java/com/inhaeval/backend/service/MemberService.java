@@ -20,6 +20,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final PasswordEncoder passwordEncoder;
+    private final MailService mailService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request){
@@ -40,14 +41,15 @@ public class MemberService {
                 .build();
         memberRepository.save(member);
 
-        String token = UUID.randomUUID().toString();    //랜덤 토큰 생성
+        String token = UUID.randomUUID().toString();    // 랜덤 토큰 생성
+
         EmailVerification verification = EmailVerification.builder()
                 .email(request.getEmail())
                 .token(token)   // 메일 인증 시 URL에 포함될 토큰
                 .build();
         emailVerificationRepository.save(verification);
 
-        //mailService.sendVerificationEmail(request.getEmail(), token);
+        mailService.sendVerificationEmail(request.getEmail(), token);
 
         return SignupResponse.builder()
                 .email(member.getEmail())
