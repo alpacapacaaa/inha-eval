@@ -22,6 +22,19 @@ const workloadLabel = {
   heavy: '많음',
 };
 
+// "핵심교양-2.역사, 사상, 문화" -> "핵심교양 2영역" 포맷 변환
+const formatArea = (type: string) => {
+  if (type.includes('핵심교양-')) {
+    const num = type.split('-')[1].split('.')[0];
+    return `핵심교양 ${num}영역`;
+  }
+  if (type.includes('일반교양-')) {
+    const num = type.split('-')[1].split('.')[0];
+    return `일반교양 ${num}영역`;
+  }
+  return type;
+};
+
 export function CourseCard({ course, showPreview = false, previewText }: CourseCardProps) {
   const stars = Array.from({ length: 5 }, (_, i) => i < Math.round(course.rating));
 
@@ -31,9 +44,9 @@ export function CourseCard({ course, showPreview = false, previewText }: CourseC
         <CardContent className="p-4">
           <div className="space-y-3">
             <div>
-              <h3 className="font-semibold text-lg">{course.name}</h3>
-              <p className="text-sm text-gray-600">
-                {course.professor} | {course.department}
+              <h3 className="font-bold text-lg text-slate-800 tracking-tight">{course.name}</h3>
+              <p className="text-[13px] text-slate-500 mt-0.5 font-medium">
+                {formatArea(course.type)} | {course.professor} | {course.department}
               </p>
             </div>
 
@@ -42,9 +55,8 @@ export function CourseCard({ course, showPreview = false, previewText }: CourseC
                 {stars.map((filled, i) => (
                   <Star
                     key={i}
-                    className={`w-4 h-4 ${
-                      filled ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
-                    }`}
+                    className={`w-4 h-4 ${filled ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+                      }`}
                   />
                 ))}
               </div>
