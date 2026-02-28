@@ -87,10 +87,16 @@ export const mockReviews: Review[] = [
     workload: 'heavy',
     attendance: 'medium',
     grading: 'medium',
-    content: '시험이 어렵지만 배울 게 많은 수업입니다. 교수님이 열정적으로 가르쳐주시고 과제도 실력 향상에 도움이 됩니다.',
+    content: '시험이 어렵고 과제도 상당히 복잡합니다. 하지만 교수님이 너무 열정적으로 가르쳐 주셔서 배울 게 엄청나게 많은 전설의 명강의입니다. 특히 DP 파트에서 실력이 비약적으로 상승했습니다.',
     likes: 12,
     createdAt: new Date('2026-02-20'),
     isAnonymous: true,
+    oneLineTip: '족보 타지 않음. 수업 필기 복습이 생명!',
+    examTypes: ['서술형', '손코딩'],
+    assignmentType: '매주 목요일 개인 과제',
+    textbook: '교수님 자체 PDF (도서 구매 불필요)',
+    recommendFor: ['알고리즘 대회 준비생', '성실한 출석러', '코딩 기초가 탄탄한 사람'],
+    notRecommendFor: ['벼락치기 선호', '수학적 사고력 부족']
   },
   {
     id: '2',
@@ -119,10 +125,13 @@ export const mockReviews: Review[] = [
     workload: 'medium',
     attendance: 'flexible',
     grading: 'generous',
-    content: '교수님이 정말 친절하시고 설명을 잘해주십니다. 출석 자유롭고 성적도 잘 주세요!',
+    content: '교수님이 정말 친절하시고 설명을 잘해주십니다. 출석 자유롭고 성적도 잘 주세요! 리눅스 커널에 대해서도 맛보기로 배울 수 있어서 재미있었습니다.',
     likes: 25,
     createdAt: new Date('2026-02-15'),
     isAnonymous: true,
+    oneLineTip: '오픈북 시험이니까 책갈피 꼼꼼히!',
+    examTypes: ['객관식', '오픈북'],
+    assignmentType: '과제 없음',
   },
   {
     id: '4',
@@ -151,10 +160,14 @@ export const mockReviews: Review[] = [
     workload: 'heavy',
     attendance: 'medium',
     grading: 'generous',
-    content: '과제는 많지만 성적은 잘 주십니다. 네트워크 기초를 탄탄히 배울 수 있어요.',
+    content: '과제는 많지만 성적은 잘 주십니다. 네트워크 기초를 탄탄히 배울 수 있어요. 와이어샤크(Wireshark) 실습이 너무 유익했습니다.',
     likes: 10,
     createdAt: new Date('2026-02-08'),
     isAnonymous: true,
+    oneLineTip: '기말 팀플 비중이 높으니 좋은 조원 찾기',
+    assignmentType: '기말 텀 프로젝트 (팀플 4인)',
+    recommendFor: ['팀플 선호'],
+    notRecommendFor: ['혼자 공부하는 것 선호']
   },
 ];
 
