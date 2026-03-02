@@ -26,6 +26,14 @@ export interface Review {
   likes: number;
   createdAt: Date;
   isAnonymous: boolean;
+
+  // Premium / Extended fields
+  examTypes?: string[];
+  assignmentType?: string;
+  textbook?: string;
+  oneLineTip?: string;
+  recommendFor?: string[];
+  notRecommendFor?: string[];
 }
 
 export interface User {
