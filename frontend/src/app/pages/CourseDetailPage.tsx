@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { Star, Lock, Plus, Loader2, BookOpen, FileText, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, Lock, Plus, Loader2, BookOpen, FileText, X, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { ReviewCard } from '../components/ReviewCard';
@@ -189,18 +189,28 @@ export function CourseDetailPage() {
   const overallRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length) : course.rating;
 
   // 🎮 육각형 게임 평점 스탯 추출 (1~5점 분포)
-  const diffScore = getAverageScore(reviews, 'difficulty', 'hard', 'medium', 'easy');     // 시험 매운맛 (어려울수록 수치 증가)
-  const workScore = getAverageScore(reviews, 'workload', 'heavy', 'medium', 'light');     // 과제 폭탄 (많을수록 수치 증가)
-  const attScore = getAverageScore(reviews, 'attendance', 'flexible', 'medium', 'strict');// 출석 자유 (자유로울수록 수치 증가)
-  const gradScore = getAverageScore(reviews, 'grading', 'generous', 'medium', 'strict');  // 학점 천사 (너그러울수록 수치 증가)
+  const diffScore = getAverageScore(reviews, 'difficulty', 'hard', 'medium', 'easy');     // 시험 난도 (어려울수록 수치 증가)
+  const workScore = getAverageScore(reviews, 'workload', 'heavy', 'medium', 'light');     // 과제량 (많을수록 수치 증가)
+  const attScore = getAverageScore(reviews, 'attendance', 'strict', 'medium', 'flexible');// 출석 엄격도 (엄격할수록 수치 증가)
+  const gradScore = getAverageScore(reviews, 'grading', 'generous', 'medium', 'strict');  // 학점 비율 (너그러울수록 수치 증가)
 
-  // 추가 2개 파라미터 유도 (가상의 유익함과 소통 능력치 -> 기존 rating과 gradScore 기반으로 산출)
-  const usefulnessScore = overallRating || 3;
-  const commScore = Math.min(5, Math.max(1, (overallRating + gradScore) / 2));
+  // 파생 스탯 (리뷰 기반 추정)
+  const teachingScore = Math.min(5, Math.max(1, (overallRating * 0.7 + gradScore * 0.3)));               // 강의력
+  const prerequisiteScore = Math.min(5, Math.max(1, (diffScore * 0.6 + workScore * 0.4)));               // 선수 지식 요구도
+  const depthScore = Math.min(5, Math.max(1, (diffScore * 0.5 + workScore * 0.3 + (6 - gradScore) * 0.2))); // 전공 심화도
+  const timeInvestScore = Math.min(5, Math.max(1, (workScore * 0.5 + diffScore * 0.3 + attScore * 0.2))); // 시간 투자
+  const pastExamScore = Math.min(5, Math.max(1, (6 - diffScore) * 0.6 + gradScore * 0.4));               // 족보 유효도 (쉬울수록 족보 잘 탐)
 
-  // 능력치 데이터 (총 6개)
-  const statsData = [usefulnessScore, gradScore, attScore, diffScore, workScore, commScore];
-  const statsLabels = ["꿀강(유익함)", "학점 스펙", "출석 자유도", "시험 매운맛", "과제/팀플량", "교수님 소통"];
+  // 카테고리별 스탯 구성
+  const isMajor = course.category === '전공';
+
+  const statsData = isMajor
+    ? [diffScore, teachingScore, gradScore, workScore, prerequisiteScore, depthScore]
+    : [diffScore, timeInvestScore, gradScore, workScore, attScore, pastExamScore];
+
+  const statsLabels = isMajor
+    ? ['시험 난도', '강의력', '학점 비율', '과제량', '선수지식', '전공 심화도']
+    : ['시험 난도', '시간 투자', '학점 비율', '과제량', '출석체크', '족보 유효도'];
 
   const handlePurchaseAccess = async () => {
     try {
@@ -383,6 +393,9 @@ export function CourseDetailPage() {
                       {course.name}
                     </h1>
                     <p className="text-sm text-slate-500 font-medium flex flex-wrap items-center gap-2">
+                      <span className={`px-2.5 py-1.5 rounded-md text-xs font-extrabold shadow-sm border ${isMajor ? 'bg-indigo-50 text-indigo-500 border-indigo-100/50' : 'bg-emerald-50 text-emerald-500 border-emerald-100/50'}`}>
+                        {course.category}
+                      </span>
                       <span className="bg-white/90 px-3 py-1.5 rounded-lg text-slate-700 font-semibold border border-slate-100 shadow-sm">
                         {course.professor} 교수님
                       </span>
@@ -430,9 +443,9 @@ export function CourseDetailPage() {
 
                 {/* 오른쪽: 육각형 레이더 차트 */}
                 <div className="flex-1 flex flex-col justify-center items-center py-2">
-                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest w-full text-center md:text-left mb-6 ml-4">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2"></span>
-                    강의 6각형 스탯
+                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest w-full flex items-center justify-center md:justify-start mb-6 md:ml-4">
+                    <Activity className="w-3.5 h-3.5 mr-2 text-indigo-400" />
+                    Course Analytics
                   </h3>
 
                   <HexagonRadarChart data={statsData} labels={statsLabels} />

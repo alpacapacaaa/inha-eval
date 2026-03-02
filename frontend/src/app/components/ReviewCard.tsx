@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, ThumbsUp, Sparkles, AlertCircle, BookOpen, PenTool, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, ThumbsUp, Sparkles, AlertCircle, BookOpen, PenTool, ChevronDown, ChevronUp, Award } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Review } from '../types/types';
@@ -37,7 +37,17 @@ export function ReviewCard({ review }: ReviewCardProps) {
   const stars = Array.from({ length: 5 }, (_, i) => i < review.rating);
 
   // Check if review has any extended fields
-  const hasExtendedInfo = review.oneLineTip || (review.examTypes && review.examTypes.length > 0) || review.assignmentType || (review.recommendFor && review.recommendFor.length > 0);
+  const hasExtendedInfo = !!(
+    review.oneLineTip ||
+    (review.examTypes && review.examTypes.length > 0) ||
+    review.assignmentType ||
+    review.textbook ||
+    (review.recommendFor && review.recommendFor.length > 0) ||
+    (review.notRecommendFor && review.notRecommendFor.length > 0)
+  );
+
+  // 알고리즘: 글자 수가 100자 이상이거나, 상세 선택항목(hasExtendedInfo)이 작성되었을 경우 우수 강의평으로 선정
+  const isHighQuality = review.content.length > 100 || hasExtendedInfo;
 
   return (
     <Card
@@ -164,10 +174,19 @@ export function ReviewCard({ review }: ReviewCardProps) {
           </p>
 
           <div className="flex items-center justify-between pt-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
-              <ThumbsUp className="w-4 h-4" />
-              <span className="text-sm font-medium">추천 {review.likes}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
+                <ThumbsUp className="w-4 h-4" />
+                <span className="text-sm font-medium">추천 {review.likes}</span>
+              </button>
+
+              {isHighQuality && (
+                <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 text-amber-600 px-2.5 py-1.5 rounded-lg text-xs font-black shadow-sm select-none">
+                  <Award className="w-3.5 h-3.5" />
+                  정성이 들어간 강의평
+                </div>
+              )}
+            </div>
 
             {hasExtendedInfo && (
               <button
