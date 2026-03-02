@@ -1,4 +1,4 @@
-import { Course, Review, User, PointHistory } from '../types/types';
+import { Course, Review, User, PointHistory, Notice, Inquiry } from '../types/types';
 
 export const mockCourses: Course[] = [
   {
@@ -244,7 +244,36 @@ export const mockReviews: Review[] = [
     likes: 12,
     createdAt: new Date('2026-02-20'),
     isAnonymous: true,
+    // 프리미엄 데이터 추가
+    oneLineTip: '기초가 부족하면 따라가기 힘들지만, 얻어가는 건 인하대 탑 3 안에 듭니다. 🔥',
+    examTypes: ['중간(서술형)', '기말(손코딩+서술형)', '퀴즈(객관식)'],
+    assignmentType: '매주 실습 과제 + 팀 프로젝트 (대규모 서비스 설계)',
+    textbook: '교수님 자체 제작 PDF (매우 고퀄리티)',
+    recommendFor: ['빡세게 배워서 실무 수준 가고 싶은 분', 'DP와 그래프 이론 마스터하고 싶은 분'],
+    notRecommendFor: ['학점 거저 따고 싶은 분', '수학적 증명을 정말 싫어하는 분'],
   },
+  {
+    id: '2',
+    courseId: '2',
+    courseName: '운영체제',
+    professorName: '박영희',
+    semester: '2025-1학기',
+    rating: 4,
+    difficulty: 'medium',
+    workload: 'medium',
+    attendance: 'strict',
+    grading: 'generous',
+    content: '운영체제의 전반적인 개념을 아주 명쾌하게 설명해주십니다. 프로젝트가 좀 힘들긴 하지만, 다 하고 나면 리눅스 커널에 대한 두려움이 사라집니다. 학점도 꽤 후하게 주시는 편이에요!',
+    likes: 8,
+    createdAt: new Date('2026-01-15'),
+    isAnonymous: false,
+    oneLineTip: '공룡책 버리지 마세요. 교수님 설명이랑 같이 보면 최고의 조합입니다. 📖',
+    examTypes: ['중간(객관식+단답형)', '기말(전용 프로그램 코딩)'],
+    assignmentType: 'PintOS 프로젝트 (3단계까지만 진행)',
+    textbook: 'Operating System Concepts (Silberschatz)',
+    recommendFor: ['CS 기본기를 탄탄하게 다지고 싶은 분', '학점도 챙기고 지식도 챙기고 싶은 분'],
+    notRecommendFor: ['C언어 포인터 개념이 아예 없는 분'],
+  }
 ];
 
 export const mockUser: User = {
@@ -261,8 +290,38 @@ export const mockPointHistory: PointHistory[] = [
   {
     id: '1',
     date: new Date('2026-02-23'),
-    description: '강의평 작성',
+    description: '강의평 작성 (알고리즘설계)',
     points: 20,
+  },
+  {
+    id: '2',
+    date: new Date('2026-02-20'),
+    description: '열람권 구매',
+    points: -50,
+  },
+  {
+    id: '3',
+    date: new Date('2026-02-18'),
+    description: '강의평 작성 (운영체제)',
+    points: 20,
+  },
+  {
+    id: '4',
+    date: new Date('2026-02-15'),
+    description: '회원가입 보너스',
+    points: 50,
+  },
+  {
+    id: '5',
+    date: new Date('2026-02-10'),
+    description: '강의평 작성 (데이터베이스)',
+    points: 20,
+  },
+  {
+    id: '6',
+    date: new Date('2026-02-05'),
+    description: '강의평 추천 보너스',
+    points: 10,
   },
 ];
 
@@ -280,3 +339,40 @@ export const departments = [
 ];
 
 export const semesters = ['전체', '2025-2학기', '2025-1학기', '2024-2학기', '2024-1학기'];
+
+export const mockNotices: Notice[] = [
+  {
+    id: 'n1',
+    title: '📢 25-1학기 수강신청 시즌 오픈!',
+    content: '2025년 1학기 수강신청 시즌이 시작되었습니다. 강의평가를 작성하고 포인트를 모아보세요! 강의평 1개 작성 시 20포인트가 적립됩니다. 열람권 구매 시 30일간 모든 강의평을 무제한으로 열람하실 수 있습니다.',
+    createdAt: new Date('2026-02-25'),
+    isImportant: true,
+  },
+  {
+    id: 'n2',
+    title: '서비스 이용 가이드 안내',
+    content: '인하평 서비스 이용 가이드입니다.\n\n1. 회원가입 후 강의평을 작성하면 20P가 적립됩니다.\n2. 50P를 사용하여 열람권을 구매하면 30일간 모든 강의평을 열람할 수 있습니다.\n3. 다른 사람의 강의평에 추천을 누르면 작성자에게 추가 포인트가 지급됩니다.\n4. 부적절한 강의평은 관리자에 의해 삭제될 수 있습니다.',
+    createdAt: new Date('2026-02-20'),
+    isImportant: false,
+  },
+  {
+    id: 'n3',
+    title: '허위/비방 강의평 작성 시 제재 안내',
+    content: '사실과 다른 내용이나 특정인을 비방하는 강의평을 작성할 경우, 경고 없이 삭제 및 계정이 제재될 수 있습니다. 건전한 강의평가 문화를 위해 협조 부탁드립니다.',
+    createdAt: new Date('2026-02-15'),
+    isImportant: true,
+  },
+];
+
+export const mockInquiries: Inquiry[] = [
+  {
+    id: 'inq1',
+    category: '건의사항',
+    title: '교양 강의 분류를 좀 더 세분화해주세요',
+    content: '현재 교양 분류가 대략적인데, 더 세분화하면 좋겠습니다.',
+    status: '답변완료',
+    createdAt: new Date('2026-02-18'),
+    answer: '소중한 의견 감사합니다! 다음 업데이트에 반영하겠습니다.',
+  },
+];
+
