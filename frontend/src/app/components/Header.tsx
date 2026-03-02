@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useState } from 'react';
 import { Button } from './ui/button';
-import { Search } from 'lucide-react';
+import { Search, LayoutGrid } from 'lucide-react';
 
 interface HeaderProps {
   isLoggedIn?: boolean;
@@ -18,10 +18,7 @@ export function Header({ isLoggedIn = false, onLogout }: HeaderProps) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
-      navigate(`/search?q=${encodeURIComponent(query)}`);
-      setQuery('');
-    }
+    navigate(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
   return (
@@ -37,6 +34,17 @@ export function Header({ isLoggedIn = false, onLogout }: HeaderProps) {
               </div>
               <span className="text-xl font-black text-slate-800 tracking-tighter">인하평</span>
             </Link>
+
+            {/* Only show 'Browse Courses' if NOT on the search page */}
+            {location.pathname !== '/search' && (
+              <Link
+                to="/search"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-indigo-600 font-bold text-[14px] transition-all rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span>강의 둘러보기</span>
+              </Link>
+            )}
 
             {/* Integrated Search Bar (Shown everywhere EXCEPT HomePage) */}
             {!isHomePage && (

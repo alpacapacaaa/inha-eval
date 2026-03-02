@@ -22,7 +22,7 @@ export function HomePage() {
       try {
         const courses = await courseService.getAllCourses();
         const recent = courses.slice(0, 3);
-        
+
         const coursesWithReviews = await Promise.all(
           recent.map(async (course) => {
             const reviews = await reviewService.getReviewsByCourseId(course.id);
@@ -32,7 +32,7 @@ export function HomePage() {
             return { ...course, latestReviewContent: latestReview };
           })
         );
-        
+
         setRecentCourses(coursesWithReviews);
       } catch (error) {
         console.error('Failed to fetch courses', error);
@@ -45,9 +45,7 @@ export function HomePage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
-    }
+    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
   return (
@@ -92,10 +90,10 @@ export function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {recentCourses.map((course) => (
-              <CourseCard 
-                key={course.id} 
-                course={course} 
-                showPreview 
+              <CourseCard
+                key={course.id}
+                course={course}
+                showPreview
                 previewText={course.latestReviewContent}
               />
             ))}
