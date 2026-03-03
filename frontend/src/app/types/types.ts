@@ -55,3 +55,21 @@ export interface PointHistory {
   description: string;
   points: number;
 }
+
+export interface Inquiry {
+  id: string;
+  category: string;
+  title: string;
+  content: string;
+  status: '접수' | '답변완료';
+  createdAt: Date;
+  answer?: string;
+}
+
+export interface Notice {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  isImportant: boolean;
+}

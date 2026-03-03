@@ -1,5 +1,5 @@
-import { Course, Review, User, PointHistory } from '../types/types';
-import { mockCourses, mockReviews, mockUser, mockPointHistory } from '../data/mockData';
+import { Course, Review, User, PointHistory, Inquiry, Notice } from '../types/types';
+import { mockCourses, mockReviews, mockUser, mockPointHistory, mockNotices, mockInquiries } from '../data/mockData';
 
 // Simulate API delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,6 +9,8 @@ let courses = [...mockCourses];
 let reviews = [...mockReviews];
 let currentUser = { ...mockUser };
 let pointHistory = [...mockPointHistory];
+let inquiries = [...mockInquiries];
+let notices = [...mockNotices];
 
 export const courseService = {
   getAllCourses: async (): Promise<Course[]> => {
@@ -27,12 +29,12 @@ export const courseService = {
     return courses.filter(
       (c) =>
         (c.name.toLowerCase().includes(lowerQuery) ||
-        c.professor.toLowerCase().includes(lowerQuery) ||
-        c.department.toLowerCase().includes(lowerQuery)) &&
+          c.professor.toLowerCase().includes(lowerQuery) ||
+          c.department.toLowerCase().includes(lowerQuery)) &&
         (!department || department === '전체' || c.department === department)
-        // Semester filtering might need to check if the course was offered in that semester
-        // For now, mockCourses doesn't have a semester field (it's in reviews).
-        // We'll ignore semester filtering on courses for this mock or assume all courses are available.
+      // Semester filtering might need to check if the course was offered in that semester
+      // For now, mockCourses doesn't have a semester field (it's in reviews).
+      // We'll ignore semester filtering on courses for this mock or assume all courses are available.
     );
   },
 };
@@ -57,7 +59,7 @@ export const reviewService = {
   createReview: async (review: Omit<Review, 'id' | 'createdAt' | 'likes' | 'courseName' | 'professorName'>): Promise<Review> => {
     await delay(500);
     const course = courses.find(c => c.id === review.courseId);
-    
+
     const newReview: Review = {
       ...review,
       id: Math.random().toString(36).substr(2, 9),
@@ -66,20 +68,20 @@ export const reviewService = {
       courseName: course?.name || '',
       professorName: course?.professor || '',
     };
-    
+
     reviews = [newReview, ...reviews];
-    
+
     // Update course stats
     if (course) {
       const courseReviews = reviews.filter(r => r.courseId === review.courseId);
       const avgRating = courseReviews.reduce((sum, r) => sum + r.rating, 0) / courseReviews.length;
-      
+
       const updatedCourse = {
         ...course,
         reviewCount: courseReviews.length,
         rating: avgRating
       };
-      
+
       courses = courses.map(c => c.id === course.id ? updatedCourse : c);
     }
 
@@ -96,9 +98,15 @@ export const userService = {
     return currentUser;
   },
 
-  login: async (email: string): Promise<User> => {
+  login: async (email: string, password?: string): Promise<User> => {
     await delay(500);
-    // Simple mock login
+    // Simple mock logic
+    if (email === 'fail@inha.ac.kr') {
+      throw new Error('존재하지 않는 이메일입니다.');
+    }
+    if (password === 'wrong') {
+      throw new Error('비밀번호가 틀렸습니다.');
+    }
     localStorage.setItem('auth_token', 'mock-token');
     return currentUser;
   },
@@ -110,11 +118,57 @@ export const userService = {
 
   signup: async (user: Partial<User>): Promise<User> => {
     await delay(800);
-    return {
+    const newUser = {
       ...mockUser,
       ...user,
       id: Math.random().toString(36).substr(2, 9),
     } as User;
+    // Update current user for the session
+    currentUser = newUser;
+    localStorage.setItem('auth_token', 'mock-token');
+    return newUser;
+  },
+
+  sendVerificationEmail: async (email: string): Promise<void> => {
+    await delay(600);
+    if (!email.endsWith('@inha.ac.kr')) {
+      throw new Error('인하대 이메일(@inha.ac.kr) 형식이 아닙니다.');
+    }
+    console.log(`Verification email sent to ${email} (Code: 123456)`);
+    // Success
+  },
+
+  verifyEmailCode: async (email: string, code: string): Promise<boolean> => {
+    await delay(400);
+    if (code === '123456') return true;
+    throw new Error('인증코드가 일치하지 않습니다.');
+  },
+
+  sendVerificationPhone: async (phone: string): Promise<void> => {
+    await delay(600);
+    console.log(`Verification SMS sent to ${phone} (Code: 111111)`);
+    // Success
+  },
+
+  verifyPhoneCode: async (phone: string, code: string): Promise<boolean> => {
+    await delay(400);
+    if (code === '111111') return true;
+    throw new Error('인증코드가 일치하지 않습니다.');
+  },
+
+  findPassword: async (email: string, phone: string): Promise<void> => {
+    await delay(600);
+    if (email !== mockUser.email || (phone !== '01012345678' && phone !== '010-1234-5678')) {
+      throw new Error('일치하는 회원 정보가 없습니다.');
+    }
+    // Success
+  },
+
+  resetPassword: async (email: string, newPassword: string): Promise<void> => {
+    await delay(600);
+    console.log(`Password reset for ${email} to ${newPassword}`);
+    // Update mock current user password (conceptually)
+    // Success
   },
 
   purchasePass: async (): Promise<User> => {
@@ -122,14 +176,14 @@ export const userService = {
     if (currentUser.points < 50) {
       throw new Error('포인트가 부족합니다.');
     }
-    
+
     currentUser = {
       ...currentUser,
       points: currentUser.points - 50,
       hasPass: true,
       passExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     };
-    
+
     // Add history
     const history: PointHistory = {
       id: Math.random().toString(36).substr(2, 9),
@@ -138,7 +192,7 @@ export const userService = {
       points: -50,
     };
     pointHistory = [history, ...pointHistory];
-    
+
     return currentUser;
   },
 
@@ -148,7 +202,7 @@ export const userService = {
       ...currentUser,
       points: currentUser.points + amount,
     };
-    
+
     const history: PointHistory = {
       id: Math.random().toString(36).substr(2, 9),
       date: new Date(),
@@ -156,12 +210,76 @@ export const userService = {
       points: amount,
     };
     pointHistory = [history, ...pointHistory];
-    
+
     return currentUser;
   },
 
   getPointHistory: async (): Promise<PointHistory[]> => {
     await delay(300);
     return pointHistory;
-  }
+  },
+
+  updateProfile: async (data: { nickname?: string; department?: string }): Promise<User> => {
+    await delay(400);
+    currentUser = {
+      ...currentUser,
+      ...(data.nickname && { nickname: data.nickname }),
+      ...(data.department && { department: data.department }),
+    };
+    return currentUser;
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    await delay(500);
+    if (currentPassword === 'wrong') {
+      throw new Error('현재 비밀번호가 틀렸습니다.');
+    }
+    if (newPassword.length < 4) {
+      throw new Error('새 비밀번호는 4자리 이상이어야 합니다.');
+    }
+    console.log(`Password changed to ${newPassword}`);
+  },
+
+  changePhone: async (newPhone: string, verificationCode: string): Promise<User> => {
+    await delay(400);
+    if (verificationCode !== '111111') {
+      throw new Error('인증코드가 일치하지 않습니다.');
+    }
+    // Phone is stored conceptually (not in User type currently, but we accept it)
+    console.log(`Phone changed to ${newPhone}`);
+    return currentUser;
+  },
+
+  deleteAccount: async (password: string): Promise<void> => {
+    await delay(600);
+    if (password === 'wrong') {
+      throw new Error('비밀번호가 틀렸습니다.');
+    }
+    localStorage.removeItem('auth_token');
+    // Reset to initial state
+    currentUser = { ...mockUser };
+  },
+
+  // --- Inquiry & Notice ---
+  submitInquiry: async (data: { category: string; title: string; content: string }): Promise<Inquiry> => {
+    await delay(500);
+    const newInquiry: Inquiry = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...data,
+      status: '접수',
+      createdAt: new Date(),
+    };
+    inquiries = [newInquiry, ...inquiries];
+    return newInquiry;
+  },
+
+  getMyInquiries: async (): Promise<Inquiry[]> => {
+    await delay(300);
+    return inquiries;
+  },
+
+  getNotices: async (): Promise<Notice[]> => {
+    await delay(300);
+    return notices;
+  },
 };
