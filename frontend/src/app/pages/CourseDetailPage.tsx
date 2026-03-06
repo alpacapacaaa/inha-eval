@@ -120,11 +120,18 @@ export function CourseDetailPage() {
   const [activeTab, setActiveTab] = useState<'reviews' | 'exams'>('reviews');
   const [isSyllabusOpen, setIsSyllabusOpen] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState<number[]>([]);
+  const [expandedExams, setExpandedExams] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState<'latest' | 'highest' | 'lowest' | 'likes'>('latest');
 
   const toggleWeek = (week: number) => {
     setExpandedWeeks(prev =>
       prev.includes(week) ? prev.filter(w => w !== week) : [...prev, week]
+    );
+  };
+
+  const toggleExam = (index: number) => {
+    setExpandedExams(prev =>
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
     );
   };
 
@@ -599,7 +606,10 @@ export function CourseDetailPage() {
                     </div>
 
                     {/* Mock Exam Card 1 */}
-                    <Card className="rounded-3xl border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <Card
+                      className={`rounded-3xl border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden group ${expandedExams.includes(1) ? 'ring-2 ring-amber-400' : ''}`}
+                      onClick={() => toggleExam(1)}
+                    >
                       <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-400 to-amber-500"></div>
                       <CardContent className="p-6 md:p-8">
                         <div className="flex justify-between items-start mb-4">
@@ -607,17 +617,39 @@ export function CourseDetailPage() {
                             <span className="bg-amber-100 text-amber-700 font-extrabold px-3 py-1 rounded-md text-sm tracking-tight">23년 1학기 중간고사</span>
                             <span className="bg-slate-100 text-slate-600 font-extrabold px-3 py-1 rounded-md text-sm tracking-tight">객관식 + 서술형 혼합</span>
                           </div>
-                          <span className="text-slate-400 text-sm font-semibold">2달 전 작성</span>
+                          <span className="text-slate-400 text-sm font-semibold flex items-center gap-1.5">
+                            2달 전 작성
+                            {expandedExams.includes(1) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </span>
                         </div>
-                        <h4 className="text-[17px] font-bold text-slate-900 mb-3 cursor-pointer">기출문제 거의 안 타고 수업 필기에서 다 나옵니다.</h4>
-                        <p className="text-slate-600 leading-relaxed font-medium">
-                          교수님이 피피티에 없는 내용도 중간중간 설명하시는데 거기가 진짜 핵심입니다. 특히 3주차에 강조하셨던 프레임워크 부분이 서술형 1번으로 그대로 나왔어요. 족보 타는 강의 아니니까 무조건 앞자리에서 녹음하고 필기하세요. 기말은 팀플 비중이 높아서 중간때 점수 무조건 따놔야함!
-                        </p>
+                        <h4 className="text-[17px] font-bold text-slate-900 mb-3 group-hover:text-amber-600 transition-colors">기출문제 거의 안 타고 수업 필기에서 다 나옵니다.</h4>
+
+                        {expandedExams.includes(1) && (
+                          <div className="mt-5 pt-5 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <p className="text-slate-600 leading-relaxed font-medium mb-4">
+                              교수님이 피피티에 없는 내용도 중간중간 설명하시는데 거기가 진짜 핵심입니다. 특히 3주차에 강조하셨던 프레임워크 부분이 서술형 1번으로 그대로 나왔어요. 족보 타는 강의 아니니까 무조건 앞자리에서 녹음하고 필기하세요. 기말은 팀플 비중이 높아서 중간때 점수 무조건 따놔야함!
+                            </p>
+                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100/50">
+                              <h5 className="font-extrabold text-amber-800 mb-2 flex items-center text-sm">
+                                <Star className="w-4 h-4 mr-1.5 fill-amber-500 text-amber-500" />
+                                많이 나온 키워드
+                              </h5>
+                              <div className="flex gap-2 flex-wrap">
+                                <span className="bg-white px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 shadow-sm">프레임워크의 개념</span>
+                                <span className="bg-white px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 shadow-sm">객체지향 방법론 비교</span>
+                                <span className="bg-white px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 shadow-sm">UML 다이어그램 종류</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
                     {/* Mock Exam Card 2 */}
-                    <Card className="rounded-3xl border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <Card
+                      className={`rounded-3xl border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden group ${expandedExams.includes(2) ? 'ring-2 ring-amber-400' : ''}`}
+                      onClick={() => toggleExam(2)}
+                    >
                       <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-400 to-amber-500"></div>
                       <CardContent className="p-6 md:p-8">
                         <div className="flex justify-between items-start mb-4">
@@ -625,12 +657,29 @@ export function CourseDetailPage() {
                             <span className="bg-amber-100 text-amber-700 font-extrabold px-3 py-1 rounded-md text-sm tracking-tight">22년 2학기 기말고사</span>
                             <span className="bg-slate-100 text-slate-600 font-extrabold px-3 py-1 rounded-md text-sm tracking-tight">객관식 위주 (100%)</span>
                           </div>
-                          <span className="text-slate-400 text-sm font-semibold">1년 전 작성</span>
+                          <span className="text-slate-400 text-sm font-semibold flex items-center gap-1.5">
+                            1년 전 작성
+                            {expandedExams.includes(2) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </span>
                         </div>
-                        <h4 className="text-[17px] font-bold text-slate-900 mb-3 cursor-pointer">족보 70% 탑니다. 족보 구하면 끝.</h4>
-                        <p className="text-slate-600 leading-relaxed font-medium">
-                          문제 은행 식으로 내시는 것 같아요. 선배들한테 족보 무조건 구해서 3회독 하면 A0 이상은 껌입니다. 아, 근데 가끔 숫자만 살짝 바꿔서 내시니까 풀이 과정은 꼭 자기가 외우고 들어가세요. 그냥 답만 외웠다간 피봅니다 ㅋㅋ
-                        </p>
+                        <h4 className="text-[17px] font-bold text-slate-900 mb-3 group-hover:text-amber-600 transition-colors">족보 70% 탑니다. 족보 구하면 끝.</h4>
+
+                        {expandedExams.includes(2) && (
+                          <div className="mt-5 pt-5 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <p className="text-slate-600 leading-relaxed font-medium mb-4">
+                              문제 은행 식으로 내시는 것 같아요. 선배들한테 족보 무조건 구해서 3회독 하면 A0 이상은 껌입니다. 아, 근데 가끔 숫자만 살짝 바꿔서 내시니까 풀이 과정은 꼭 자기가 외우고 들어가세요. 그냥 답만 외웠다간 피봅니다 ㅋㅋ
+                            </p>
+                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100/50">
+                              <h5 className="font-extrabold text-amber-800 mb-2 flex items-center text-sm">
+                                <Star className="w-4 h-4 mr-1.5 fill-amber-500 text-amber-500" />
+                                꿀팁 & 체감 난이도
+                              </h5>
+                              <p className="text-sm text-amber-900/80 font-medium">
+                                기말고사는 중간고사 범위 누적 없이 딱 기말 부분만 나옵니다. 계산 문제가 은근 많아서 시간 관리가 핵심이에요. (체감 난이도: 하)
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>

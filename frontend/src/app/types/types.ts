@@ -35,6 +35,8 @@ export interface Review {
   assignmentType?: string;
   textbook?: string;
   oneLineTip?: string;
+  examInfo?: string;
+  examKeywords?: string[];
   recommendFor?: string[];
   notRecommendFor?: string[];
 
