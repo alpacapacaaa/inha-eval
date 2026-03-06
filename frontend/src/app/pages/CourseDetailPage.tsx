@@ -20,6 +20,12 @@ const getAverageScore = (reviews: Review[], key: 'difficulty' | 'workload' | 'at
   return sum / reviews.length;
 };
 
+const getAverageNumericScore = (reviews: Review[], key: keyof Review, fallback: number) => {
+  const validReviews = reviews.filter(r => typeof r[key] === 'number');
+  if (validReviews.length === 0) return fallback;
+  return validReviews.reduce((sum, r) => sum + (r[key] as number), 0) / validReviews.length;
+};
+
 // 📊 심플하고 세련된 육각형 레이더 차트 (Light Frosted Theme)
 const HexagonRadarChart = ({ data, labels }: { data: number[], labels: string[] }) => {
   const center = 100;
@@ -189,17 +195,22 @@ export function CourseDetailPage() {
   const overallRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length) : course.rating;
 
   // 🎮 육각형 게임 평점 스탯 추출 (1~5점 분포)
-  const diffScore = getAverageScore(reviews, 'difficulty', 'hard', 'medium', 'easy');     // 시험 난도 (어려울수록 수치 증가)
-  const workScore = getAverageScore(reviews, 'workload', 'heavy', 'medium', 'light');     // 과제량 (많을수록 수치 증가)
-  const attScore = getAverageScore(reviews, 'attendance', 'strict', 'medium', 'flexible');// 출석 엄격도 (엄격할수록 수치 증가)
-  const gradScore = getAverageScore(reviews, 'grading', 'generous', 'medium', 'strict');  // 학점 비율 (너그러울수록 수치 증가)
+  const fbDiffScore = getAverageScore(reviews, 'difficulty', 'hard', 'medium', 'easy');
+  const fbWorkScore = getAverageScore(reviews, 'workload', 'heavy', 'medium', 'light');
+  const fbAttScore = getAverageScore(reviews, 'attendance', 'strict', 'medium', 'flexible');
+  const fbGradScore = getAverageScore(reviews, 'grading', 'generous', 'medium', 'strict');
 
-  // 파생 스탯 (리뷰 기반 추정)
-  const teachingScore = Math.min(5, Math.max(1, (overallRating * 0.7 + gradScore * 0.3)));               // 강의력
-  const prerequisiteScore = Math.min(5, Math.max(1, (diffScore * 0.6 + workScore * 0.4)));               // 선수 지식 요구도
-  const depthScore = Math.min(5, Math.max(1, (diffScore * 0.5 + workScore * 0.3 + (6 - gradScore) * 0.2))); // 전공 심화도
-  const timeInvestScore = Math.min(5, Math.max(1, (workScore * 0.5 + diffScore * 0.3 + attScore * 0.2))); // 시간 투자
-  const pastExamScore = Math.min(5, Math.max(1, (6 - diffScore) * 0.6 + gradScore * 0.4));               // 족보 유효도 (쉬울수록 족보 잘 탐)
+  const diffScore = getAverageNumericScore(reviews, 'diffScore', fbDiffScore);
+  const workScore = getAverageNumericScore(reviews, 'workScore', fbWorkScore);
+  const attScore = getAverageNumericScore(reviews, 'attScore', fbAttScore);
+  const gradScore = getAverageNumericScore(reviews, 'gradScore', fbGradScore);
+
+  // 파생 스탯 (리뷰 기반 추정 - 폴백용)
+  const teachingScore = getAverageNumericScore(reviews, 'teachingScore', Math.min(5, Math.max(1, (overallRating * 0.7 + fbGradScore * 0.3))));
+  const prerequisiteScore = getAverageNumericScore(reviews, 'prerequisiteScore', Math.min(5, Math.max(1, (fbDiffScore * 0.6 + fbWorkScore * 0.4))));
+  const depthScore = getAverageNumericScore(reviews, 'depthScore', Math.min(5, Math.max(1, (fbDiffScore * 0.5 + fbWorkScore * 0.3 + (6 - fbGradScore) * 0.2))));
+  const timeInvestScore = getAverageNumericScore(reviews, 'timeInvestScore', Math.min(5, Math.max(1, (fbWorkScore * 0.5 + fbDiffScore * 0.3 + fbAttScore * 0.2))));
+  const pastExamScore = getAverageNumericScore(reviews, 'pastExamScore', Math.min(5, Math.max(1, (6 - fbDiffScore) * 0.6 + fbGradScore * 0.4)));
 
   // 카테고리별 스탯 구성
   const isMajor = course.category === '전공';
@@ -427,7 +438,7 @@ export function CourseDetailPage() {
                     <Link to={`/review/write/${course.id}`} className="block w-full">
                       <Button className="font-semibold bg-slate-900 hover:bg-slate-800 text-white h-12 px-6 rounded-xl w-full transition-all shadow-md text-sm">
                         <Plus className="w-4 h-4 mr-1.5" />
-                        나도 강의평가 작성하기
+                        강의평가 작성하기
                       </Button>
                     </Link>
                     <Button

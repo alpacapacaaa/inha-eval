@@ -54,7 +54,7 @@ export function HomePage() {
       <div className="bg-white border-b">
         <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            인하대 강의평가,
+            인하대 강의평가
           </h1>
           <p className="text-xl text-gray-600 mb-8">
             수강신청 전에 미리 확인하세요.

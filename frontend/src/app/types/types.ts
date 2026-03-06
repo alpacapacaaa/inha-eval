@@ -37,6 +37,17 @@ export interface Review {
   oneLineTip?: string;
   recommendFor?: string[];
   notRecommendFor?: string[];
+
+  // Hexagon numerical stats (1-5)
+  diffScore?: number;
+  teachingScore?: number;
+  gradScore?: number;
+  workScore?: number;
+  prerequisiteScore?: number;
+  depthScore?: number;
+  timeInvestScore?: number;
+  attScore?: number;
+  pastExamScore?: number;
 }
 
 export interface User {

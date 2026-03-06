@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { Star, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Star, Loader2, Sparkles, AlertCircle, Activity } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
@@ -14,9 +14,9 @@ import { Course } from '../types/types';
 import { toast } from 'sonner';
 
 const semesters = ['2025-2학기', '2025-1학기', '2024-2학기', '2024-1학기'];
-const examTypeOptions = ['객관식', '주관식/서술형', '오픈북', '과제 대체', '실습/발표'];
-const recommendOptions = ['벼락치기 가능', '성실한 출석러', '팀플/발표 선호', '이해력 중시', '암기력 중시'];
-const notRecommendOptions = ['암기 취약', '팀플 극혐', '발표 공포증', '수학/계산 약함', '독학 선호'];
+const examTypeOptions = ['객관식', '단답형', '주관식/서술형', '오픈북', '과제 대체', '실습/발표', '조별 발표', '코드 짜기'];
+const recommendOptions = ['벼락치기 가능', '성실한 출석러', '팀플/발표 선호', '이해력 중시', '암기력 중시', '독강러(혼자 듣기 좋음)', '교수님과 소통 원함', '무난한 꿀교양 찾는 분', '과제 매니아'];
+const notRecommendOptions = ['암기 취약', '팀플 극혐', '발표 공포증', '수학/계산 약함', '독학 선호', '벼락치기 선호', '출석 잘 안 하는 분', '발제/토론 기피자', '코딩 혐오'];
 
 export function ReviewWritePage() {
   const { courseId } = useParams();
@@ -33,6 +33,17 @@ export function ReviewWritePage() {
   const [workload, setWorkload] = useState<'light' | 'medium' | 'heavy'>('medium');
   const [attendance, setAttendance] = useState<'strict' | 'medium' | 'flexible'>('medium');
   const [grading, setGrading] = useState<'generous' | 'medium' | 'strict'>('medium');
+
+  // 육각형 지표 스탯 (1~5)
+  const [diffScore, setDiffScore] = useState(3);
+  const [teachingScore, setTeachingScore] = useState(3);
+  const [gradScore, setGradScore] = useState(3);
+  const [workScore, setWorkScore] = useState(3);
+  const [prerequisiteScore, setPrerequisiteScore] = useState(3);
+  const [depthScore, setDepthScore] = useState(3);
+  const [timeInvestScore, setTimeInvestScore] = useState(3);
+  const [attScore, setAttScore] = useState(3);
+  const [pastExamScore, setPastExamScore] = useState(3);
 
   // 🔥 추가 항목
   const [examTypes, setExamTypes] = useState<string[]>([]);
@@ -113,6 +124,15 @@ export function ReviewWritePage() {
         grading,
         content,
         isAnonymous: true,
+        diffScore,
+        teachingScore,
+        gradScore,
+        workScore,
+        prerequisiteScore,
+        depthScore,
+        timeInvestScore,
+        attScore,
+        pastExamScore,
         // Optional parameters backend might ignore for now or we can structure inside a JSON string
         // examTypes, assignmentType, textbook, oneLineTip, recommendFor, notRecommendFor
       });
@@ -130,6 +150,27 @@ export function ReviewWritePage() {
   };
 
   const displayRating = hoveredRating || rating;
+  const isMajor = course?.category === '전공';
+
+  const majorMetrics = [
+    { label: '시험 난이도', value: diffScore, setter: setDiffScore, options: [{ l: '쉬움', v: 1 }, { l: '보통', v: 3 }, { l: '어려움', v: 5 }] },
+    { label: '강의력', value: teachingScore, setter: setTeachingScore, options: [{ l: '아쉬움', v: 1 }, { l: '보통', v: 3 }, { l: '훌륭함', v: 5 }] },
+    { label: '학점 비율', value: gradScore, setter: setGradScore, options: [{ l: '짜게줌', v: 1 }, { l: '보통', v: 3 }, { l: '꿀잼/잘줌', v: 5 }] },
+    { label: '과제량', value: workScore, setter: setWorkScore, options: [{ l: '적음', v: 1 }, { l: '보통', v: 3 }, { l: '많음', v: 5 }] },
+    { label: '선수지식 필요도', value: prerequisiteScore, setter: setPrerequisiteScore, options: [{ l: '필요없음', v: 1 }, { l: '어느정도', v: 3 }, { l: '필수적임', v: 5 }] },
+    { label: '전공 심화도', value: depthScore, setter: setDepthScore, options: [{ l: '얕음', v: 1 }, { l: '보통', v: 3 }, { l: '깊음', v: 5 }] },
+  ];
+
+  const generalMetrics = [
+    { label: '시험 난이도', value: diffScore, setter: setDiffScore, options: [{ l: '쉬움', v: 1 }, { l: '보통', v: 3 }, { l: '어려움', v: 5 }] },
+    { label: '시간 투자', value: timeInvestScore, setter: setTimeInvestScore, options: [{ l: '적음', v: 1 }, { l: '보통', v: 3 }, { l: '많음', v: 5 }] },
+    { label: '학점 비율', value: gradScore, setter: setGradScore, options: [{ l: '짜게줌', v: 1 }, { l: '보통', v: 3 }, { l: '꿀잼/잘줌', v: 5 }] },
+    { label: '과제량', value: workScore, setter: setWorkScore, options: [{ l: '적음', v: 1 }, { l: '보통', v: 3 }, { l: '많음', v: 5 }] },
+    { label: '출석체크 엄격도', value: attScore, setter: setAttScore, options: [{ l: '안부름/전자', v: 1 }, { l: '가끔 부름', v: 3 }, { l: '매번 부름', v: 5 }] },
+    { label: '족보 유효도', value: pastExamScore, setter: setPastExamScore, options: [{ l: '안탐', v: 1 }, { l: '조금 탐', v: 3 }, { l: '그대로 나옴', v: 5 }] },
+  ];
+
+  const currentMetrics = isMajor ? majorMetrics : generalMetrics;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -169,119 +210,67 @@ export function ReviewWritePage() {
 
                 <div className="space-y-3 flex-1">
                   <Label className="text-base font-semibold">전체 별점</Label>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" onMouseLeave={() => setHoveredRating(0)}>
                     {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setRating(value)}
-                        onMouseEnter={() => setHoveredRating(value)}
-                        onMouseLeave={() => setHoveredRating(0)}
-                        className="focus:outline-none transition-transform hover:scale-110"
-                      >
+                      <div key={value} className="relative cursor-pointer flex">
                         <Star
-                          className={`w-9 h-9 transition-colors ${value <= displayRating
-                              ? 'fill-yellow-400 text-yellow-400'
-                              : 'text-gray-200'
+                          className={`w-9 h-9 transition-colors ${value <= Math.floor(displayRating)
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-gray-200'
                             }`}
                         />
-                      </button>
+                        {/* Half star overlay */}
+                        {displayRating === value - 0.5 && (
+                          <div className="absolute top-0 left-0 overflow-hidden w-[50%]">
+                            <Star className="w-9 h-9 fill-yellow-400 text-yellow-400" />
+                          </div>
+                        )}
+                        <div
+                          className="absolute top-0 left-0 w-1/2 h-full z-10"
+                          onClick={() => setRating(value - 0.5)}
+                          onMouseEnter={() => setHoveredRating(value - 0.5)}
+                        />
+                        <div
+                          className="absolute top-0 right-0 w-1/2 h-full z-10"
+                          onClick={() => setRating(value)}
+                          onMouseEnter={() => setHoveredRating(value)}
+                        />
+                      </div>
                     ))}
                     {rating > 0 && <span className="ml-3 font-bold text-lg text-gray-700">{rating}점</span>}
                   </div>
                 </div>
               </div>
 
-              {/* 한 줄 꿀팁 */}
-              <div className="space-y-3 bg-blue-50/50 p-5 rounded-xl border border-blue-100">
-                <Label className="text-base font-semibold flex items-center gap-2 text-blue-900">
-                  <Sparkles className="w-5 h-5 text-blue-500" />
-                  이 강의의 한 줄 꿀팁!
+              {/* 🌟 육각형 지표 평가 (1~5점) */}
+              <div className="pt-4 space-y-4">
+                <Label className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-indigo-500" />
+                  상세 지표 평가 (육각형 스탯)
                 </Label>
-                <div className="flex items-center">
-                  <Input
-                    placeholder="예: 앞자리 앉아서 눈 맞추면 A+ 보장, 족보 필수"
-                    value={oneLineTip}
-                    onChange={(e) => setOneLineTip(e.target.value)}
-                    maxLength={40}
-                    className="bg-white border-blue-200 focus-visible:ring-blue-500"
-                  />
-                </div>
-                <p className="text-xs text-blue-600 text-right">{oneLineTip.length}/40자</p>
-              </div>
-
-              {/* 라디오 버튼 평가들 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                {/* 난이도 */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium text-gray-700">시험 난이도</Label>
-                  <RadioGroup value={difficulty} onValueChange={(v) => setDifficulty(v as any)} className="flex gap-3">
-                    {[{ v: 'easy', l: '쉬움' }, { v: 'medium', l: '보통' }, { v: 'hard', l: '어려움' }].map((item) => (
-                      <div key={item.v} className="flex-1">
-                        <RadioGroupItem value={item.v} id={`diff-${item.v}`} className="peer sr-only" />
-                        <Label
-                          htmlFor={`diff-${item.v}`}
-                          className="flex justify-center p-3 border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 transition-all hover:bg-gray-50"
-                        >
-                          {item.l}
-                        </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 bg-slate-50 p-6 rounded-2xl border border-slate-100/80 shadow-inner">
+                  {currentMetrics.map((metric, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <Label className="text-sm font-bold text-gray-700">{metric.label}</Label>
                       </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                {/* 학습량 */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium text-gray-700">학습량(과제량)</Label>
-                  <RadioGroup value={workload} onValueChange={(v) => setWorkload(v as any)} className="flex gap-3">
-                    {[{ v: 'light', l: '적음' }, { v: 'medium', l: '보통' }, { v: 'heavy', l: '많음' }].map((item) => (
-                      <div key={item.v} className="flex-1">
-                        <RadioGroupItem value={item.v} id={`work-${item.v}`} className="peer sr-only" />
-                        <Label
-                          htmlFor={`work-${item.v}`}
-                          className="flex justify-center p-3 border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 transition-all hover:bg-gray-50"
-                        >
-                          {item.l}
-                        </Label>
+                      <div className="flex gap-1.5">
+                        {metric.options.map((opt) => (
+                          <button
+                            key={opt.v}
+                            type="button"
+                            onClick={() => metric.setter(opt.v)}
+                            className={`flex-1 py-1.5 px-1 text-[13px] font-bold rounded-lg transition-all ${metric.value === opt.v
+                              ? 'bg-indigo-600 text-white shadow-md border-transparent scale-105'
+                              : 'bg-white text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200/80 shadow-sm'
+                              }`}
+                          >
+                            {opt.l}
+                          </button>
+                        ))}
                       </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                {/* 학점 */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium text-gray-700">학점 비율</Label>
-                  <RadioGroup value={grading} onValueChange={(v) => setGrading(v as any)} className="flex gap-3">
-                    {[{ v: 'generous', l: '꿀잼/잘줌' }, { v: 'medium', l: '보통' }, { v: 'strict', l: '짜게줌' }].map((item) => (
-                      <div key={item.v} className="flex-1">
-                        <RadioGroupItem value={item.v} id={`grad-${item.v}`} className="peer sr-only" />
-                        <Label
-                          htmlFor={`grad-${item.v}`}
-                          className="flex justify-center p-3 border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 transition-all hover:bg-gray-50"
-                        >
-                          {item.l}
-                        </Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                {/* 출석 */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium text-gray-700">출석 체크</Label>
-                  <RadioGroup value={attendance} onValueChange={(v) => setAttendance(v as any)} className="flex gap-3">
-                    {[{ v: 'strict', l: '매번 부름' }, { v: 'medium', l: '가끔 부름' }, { v: 'flexible', l: '안부름/전자' }].map((item) => (
-                      <div key={item.v} className="flex-1">
-                        <RadioGroupItem value={item.v} id={`att-${item.v}`} className="peer sr-only" />
-                        <Label
-                          htmlFor={`att-${item.v}`}
-                          className="flex justify-center p-3 border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 transition-all hover:bg-gray-50"
-                        >
-                          {item.l}
-                        </Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
