@@ -40,6 +40,9 @@ export function AuthPage({ onLogin }: AuthPageProps) {
   const [findPwdStep, setFindPwdStep] = useState(1); // 1: input info, 2: verify phone, 3: reset password
   const [newPassword, setNewPassword] = useState('');
 
+  // Signup step state
+  const [signupStep, setSignupStep] = useState(1); // 1: Verification, 2: Info input
+
   const isLogin = initialMode === 'login';
   const isSignup = initialMode === 'signup';
   const isFindPwd = initialMode === 'find-password';
@@ -52,6 +55,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
     setIsPhoneCodeSent(false);
     setPhoneCode('');
     setFindPwdStep(1);
+    setSignupStep(1);
     setEmail('');
     setPassword('');
     setPhone('');
@@ -79,8 +83,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
     } catch (error: any) {
       toast.error(error.message || '인증 코드 발송에 실패했습니다.');
     } finally {
-      setIsLoading(true);
-      setTimeout(() => setIsLoading(false), 500);
+      setIsLoading(false);
     }
   };
 
@@ -177,6 +180,16 @@ export function AuthPage({ onLogin }: AuthPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSignup && signupStep === 1) {
+      if (isEmailVerified && isPhoneVerified) {
+        setSignupStep(2);
+      } else {
+        toast.error('본인 인증을 완료해주세요.');
+      }
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -191,11 +204,6 @@ export function AuthPage({ onLogin }: AuthPageProps) {
         toast.success('환영합니다!');
         navigate('/');
       } else if (isSignup) {
-        if (!isEmailVerified || !isPhoneVerified) {
-          toast.error('이메일과 전화번호 인증이 필요합니다.');
-          setIsLoading(false);
-          return;
-        }
         if (!email || !password || !nickname || !department || !phone) {
           toast.error('모든 항목을 입력해주세요');
           setIsLoading(false);
@@ -228,12 +236,25 @@ export function AuthPage({ onLogin }: AuthPageProps) {
             {isFindPwd ? <Lock className="w-7 h-7 text-white" /> : <GraduationCap className="w-7 h-7 text-white" />}
           </div>
           <h1 className="text-3xl font-bold text-gray-900">
-            {isLogin ? '다시 만나서 반가워요' : isSignup ? '인하대생 인증하기' : '비밀번호 찾기'}
+            {isLogin ? '다시 만나서 반가워요' : isSignup ? (signupStep === 1 ? '인하대생 인증하기' : '기본 정보 입력') : '비밀번호 찾기'}
           </h1>
           <p className="text-sm text-gray-500 font-medium">
-            {isLogin ? '서비스를 이용하려면 로그인해주세요' : isSignup ? '학교 이메일과 휴대폰으로 안전하게 가입하세요' : '등록된 정보로 본인임을 확인해주세요'}
+            {isLogin ? '서비스를 이용하려면 로그인해주세요' : isSignup ? (signupStep === 1 ? '학교 이메일과 휴대폰으로 인증을 진행해주세요' : '가입을 위해 필요한 정보를 입력해주세요') : '등록된 정보로 본인임을 확인해주세요'}
           </p>
         </div>
+
+        {/* Progress Stepper for Signup */}
+        {isSignup && (
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all ${signupStep === 1 ? 'bg-indigo-600 text-white shadow-md ring-4 ring-indigo-50' : 'bg-emerald-100 text-emerald-600'}`}>
+              {signupStep > 1 ? <CheckCircle2 className="w-5 h-5" /> : '1'}
+            </div>
+            <div className={`h-0.5 w-10 transition-all ${signupStep > 1 ? 'bg-emerald-200' : 'bg-slate-100'}`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all ${signupStep === 2 ? 'bg-indigo-600 text-white shadow-md ring-4 ring-indigo-50' : 'bg-slate-100 text-slate-400'}`}>
+              2
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={isFindPwd ? (e) => e.preventDefault() : handleSubmit} className="space-y-6">
@@ -374,151 +395,164 @@ export function AuthPage({ onLogin }: AuthPageProps) {
 
             {/* --- SIGNUP FLOW (Step by Step) --- */}
             {isSignup && (
-              <div className="space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
 
-                {/* 1. Email Verification */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1.5">
-                    학교 이메일 인증
-                    {isEmailVerified && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="email"
-                      placeholder="example@inha.ac.kr"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={isEmailVerified || isLoading}
-                      className="flex-1 bg-white/50 border-slate-200 rounded-xl h-12 font-medium px-4"
-                    />
-                    {!isEmailVerified && (
-                      <Button
-                        type="button"
-                        onClick={handleSendEmailCode}
-                        disabled={isLoading || !email}
-                        className="bg-slate-900 text-white rounded-xl h-12 px-4 text-xs font-bold shrink-0 shadow-sm"
-                      >
-                        {isEmailCodeSent ? '재발송' : '인증발송'}
-                      </Button>
-                    )}
-                  </div>
-                  {isEmailCodeSent && !isEmailVerified && (
-                    <div className="flex gap-2 animate-in slide-in-from-top-2 duration-300">
-                      <Input
-                        placeholder="인증코드 6자리"
-                        value={emailCode}
-                        onChange={(e) => setEmailCode(e.target.value)}
-                        className="flex-1 bg-indigo-50/50 border-indigo-100 rounded-xl h-12 px-4 font-bold text-center tracking-widest"
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleVerifyEmailCode}
-                        className="bg-indigo-600 text-white rounded-xl h-12 px-4 text-xs font-bold"
-                      >
-                        코드확인
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Phone Verification - Only visible after email verified OR always visible but disabled */}
-                <div className={`space-y-1.5 transition-all duration-500 ${!isEmailVerified ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                  <Label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1.5">
-                    휴대폰 본인 확인
-                    {isPhoneVerified && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="tel"
-                      placeholder="010-1234-5678"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      disabled={isPhoneVerified || isLoading || !isEmailVerified}
-                      className="flex-1 bg-white/50 border-slate-200 rounded-xl h-12 font-medium px-4"
-                    />
-                    {!isPhoneVerified && (
-                      <Button
-                        type="button"
-                        onClick={handleSendPhoneCode}
-                        disabled={isLoading || !phone || !isEmailVerified}
-                        className="bg-slate-900 text-white rounded-xl h-12 px-4 text-xs font-bold shrink-0 shadow-sm"
-                      >
-                        {isPhoneCodeSent ? '재발송' : '인증발송'}
-                      </Button>
-                    )}
-                  </div>
-                  {isPhoneCodeSent && !isPhoneVerified && (
-                    <div className="flex gap-2 animate-in slide-in-from-top-2 duration-300">
-                      <Input
-                        placeholder="인증코드 6자리"
-                        value={phoneCode}
-                        onChange={(e) => setPhoneCode(e.target.value)}
-                        className="flex-1 bg-indigo-50/50 border-indigo-100 rounded-xl h-12 px-4 font-bold text-center tracking-widest"
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleVerifyPhoneCode}
-                        className="bg-indigo-600 text-white rounded-xl h-12 px-4 text-xs font-bold"
-                      >
-                        코드확인
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Rest of the profile - Only visible after phone verified */}
-                <div className={`space-y-4 transition-all duration-500 ${!isPhoneVerified ? 'max-h-0 overflow-hidden opacity-0' : 'max-h-[500px] opacity-100 pt-2'}`}>
-                  <div className="grid grid-cols-2 gap-4">
+                {signupStep === 1 && (
+                  <>
+                    {/* 1. Email Verification */}
                     <div className="space-y-1.5">
-                      <Label htmlFor="password-signup" className="text-sm font-bold text-slate-700 ml-1">비밀번호</Label>
-                      <Input
-                        id="password-signup"
-                        type="password"
-                        placeholder="4자리 이상"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="bg-white/50 border-slate-200 rounded-xl h-12 px-4"
-                      />
+                      <Label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1.5">
+                        학교 이메일 인증
+                        {isEmailVerified && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          placeholder="example@inha.ac.kr"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          disabled={isEmailVerified || isLoading}
+                          className="flex-1 bg-white/50 border-slate-200 rounded-xl h-12 font-medium px-4"
+                        />
+                        {!isEmailVerified && (
+                          <Button
+                            type="button"
+                            onClick={handleSendEmailCode}
+                            disabled={isLoading || !email}
+                            className="bg-slate-900 text-white rounded-xl h-12 px-4 text-xs font-bold shrink-0 shadow-sm"
+                          >
+                            {isEmailCodeSent ? '재발송' : '인증발송'}
+                          </Button>
+                        )}
+                      </div>
+                      {isEmailCodeSent && !isEmailVerified && (
+                        <div className="flex gap-2 animate-in slide-in-from-top-2 duration-300">
+                          <Input
+                            placeholder="인증코드 6자리"
+                            value={emailCode}
+                            onChange={(e) => setEmailCode(e.target.value)}
+                            className="flex-1 bg-indigo-50/50 border-indigo-100 rounded-xl h-12 px-4 font-bold text-center tracking-widest"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleVerifyEmailCode}
+                            className="bg-indigo-600 text-white rounded-xl h-12 px-4 text-xs font-bold"
+                          >
+                            코드확인
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="nickname" className="text-sm font-bold text-slate-700 ml-1">닉네임</Label>
-                      <Input
-                        id="nickname"
-                        type="text"
-                        placeholder="익명학생"
-                        value={nickname}
-                        onChange={(e) => setNickname(e.target.value)}
-                        className="bg-white/50 border-slate-200 rounded-xl h-12 px-4"
-                      />
-                    </div>
-                  </div>
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="department" className="text-sm font-bold text-slate-700 ml-1">소속 학과</Label>
-                    <Select value={department} onValueChange={setDepartment}>
-                      <SelectTrigger className="bg-white/50 border-slate-200 rounded-xl h-12 px-4 w-full font-medium">
-                        <SelectValue placeholder="학과를 선택해주세요" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[300px] rounded-2xl shadow-xl border-slate-200">
-                        {departments.filter((d) => d !== '전체').map((dept) => (
-                          <SelectItem key={dept} value={dept} className="font-medium">
-                            {dept}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {/* 2. Phone Verification */}
+                    <div className={`space-y-1.5 transition-all duration-500 ${!isEmailVerified ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+                      <Label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1.5">
+                        휴대폰 본인 확인
+                        {isPhoneVerified && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="tel"
+                          placeholder="010-1234-5678"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          disabled={isPhoneVerified || isLoading || !isEmailVerified}
+                          className="flex-1 bg-white/50 border-slate-200 rounded-xl h-12 font-medium px-4"
+                        />
+                        {!isPhoneVerified && (
+                          <Button
+                            type="button"
+                            onClick={handleSendPhoneCode}
+                            disabled={isLoading || !phone || !isEmailVerified}
+                            className="bg-slate-900 text-white rounded-xl h-12 px-4 text-xs font-bold shrink-0 shadow-sm"
+                          >
+                            {isPhoneCodeSent ? '재발송' : '인증발송'}
+                          </Button>
+                        )}
+                      </div>
+                      {isPhoneCodeSent && !isPhoneVerified && (
+                        <div className="flex gap-2 animate-in slide-in-from-top-2 duration-300">
+                          <Input
+                            placeholder="인증코드 6자리"
+                            value={phoneCode}
+                            onChange={(e) => setPhoneCode(e.target.value)}
+                            className="flex-1 bg-indigo-50/50 border-indigo-100 rounded-xl h-12 px-4 font-bold text-center tracking-widest"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleVerifyPhoneCode}
+                            className="bg-indigo-600 text-white rounded-xl h-12 px-4 text-xs font-bold"
+                          >
+                            코드확인
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {signupStep === 2 && (
+                  <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+                    <button
+                      type="button"
+                      onClick={() => setSignupStep(1)}
+                      className="text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1 mb-2"
+                    >
+                      <ArrowRight className="w-3 h-3 rotate-180" /> 이전 인증 단계로
+                    </button>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="password-signup" className="text-sm font-bold text-slate-700 ml-1">비밀번호</Label>
+                        <Input
+                          id="password-signup"
+                          type="password"
+                          placeholder="4자리 이상"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="bg-white/50 border-slate-200 rounded-xl h-12 px-4 focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="nickname" className="text-sm font-bold text-slate-700 ml-1">닉네임</Label>
+                        <Input
+                          id="nickname"
+                          type="text"
+                          placeholder="익명학생"
+                          value={nickname}
+                          onChange={(e) => setNickname(e.target.value)}
+                          className="bg-white/50 border-slate-200 rounded-xl h-12 px-4 focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="department" className="text-sm font-bold text-slate-700 ml-1">소속 학과</Label>
+                      <Select value={department} onValueChange={setDepartment}>
+                        <SelectTrigger className="bg-white/50 border-slate-200 rounded-xl h-12 px-4 w-full font-medium focus:ring-2 focus:ring-indigo-500 text-left">
+                          <SelectValue placeholder="학과를 선택해주세요" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px] rounded-2xl shadow-xl border-slate-200">
+                          {departments.filter((d) => d !== '전체').map((dept) => (
+                            <SelectItem key={dept} value={dept} className="font-medium">
+                              {dept}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Submit Button (Only for Login/Signup final step) */}
+          {/* Submit/Next Button */}
           {(isLogin || isSignup) && (
             <Button
               type="submit"
-              disabled={isLoading || (isSignup && (!isEmailVerified || !isPhoneVerified))}
-              className="w-full h-14 mt-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-lg shadow-xl shadow-indigo-100 transition-all active:scale-95 disabled:opacity-50"
+              disabled={isLoading || (isSignup && signupStep === 1 && (!isEmailVerified || !isPhoneVerified))}
+              className={`w-full h-14 mt-4 text-white rounded-2xl font-bold text-lg shadow-xl transition-all active:scale-95 disabled:opacity-50 ${isSignup && signupStep === 1 ? 'bg-slate-900 hover:bg-black shadow-slate-100' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
             >
               {isLoading ? (
                 <div className="flex items-center gap-3">
@@ -527,7 +561,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
                 </div>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  {isLogin ? '로그인하기' : '가입 완료하기'}
+                  {isLogin ? '로그인하기' : (signupStep === 1 ? '다음 단계로' : '가입 완료하기')}
                   <ArrowRight className="w-5 h-5" />
                 </span>
               )}
