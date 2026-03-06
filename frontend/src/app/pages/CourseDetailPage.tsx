@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router';
 import { Star, Lock, Plus, Loader2, BookOpen, FileText, X, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { ReviewCard } from '../components/ReviewCard';
 import { courseService, reviewService, userService } from '../api/api';
 import { Course, Review, User } from '../types/types';
@@ -119,6 +120,7 @@ export function CourseDetailPage() {
   const [activeTab, setActiveTab] = useState<'reviews' | 'exams'>('reviews');
   const [isSyllabusOpen, setIsSyllabusOpen] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState<number[]>([]);
+  const [sortBy, setSortBy] = useState<'latest' | 'highest' | 'lowest' | 'likes'>('latest');
 
   const toggleWeek = (week: number) => {
     setExpandedWeeks(prev =>
@@ -191,6 +193,16 @@ export function CourseDetailPage() {
       </div>
     );
   }
+
+  // 1) 리뷰 정렬 로직 적용
+  const finalReviews = [...reviews]
+    .sort((a, b) => {
+      if (sortBy === 'latest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (sortBy === 'highest') return b.rating - a.rating;
+      if (sortBy === 'lowest') return a.rating - b.rating;
+      if (sortBy === 'likes') return (b.likes || 0) - (a.likes || 0);
+      return 0;
+    });
 
   const overallRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length) : course.rating;
 
@@ -531,18 +543,35 @@ export function CourseDetailPage() {
                 {/* 탭 내용 1: 🎉 REVIEWS */}
                 {activeTab === 'reviews' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                    <div className="flex items-center justify-between px-2">
+                    <div className="flex flex-col md:flex-row items-center justify-between px-2 gap-4">
                       <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
                         <span className="w-1.5 h-6 bg-indigo-500 rounded-full inline-block"></span>
-                        작성된 수강평 <span className="text-indigo-600">{reviews.length}</span>
+                        작성된 수강평 <span className="text-indigo-600">{finalReviews.length}</span>
                       </h2>
+
+                      {/* 정렬 컨트롤러 */}
+                      <div className="flex items-center w-full md:w-auto">
+                        <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                          <SelectTrigger className="w-[130px] bg-white border-slate-200">
+                            <SelectValue placeholder="정렬 방식" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="latest">최신 등록순</SelectItem>
+                            <SelectItem value="likes">추천 많은순</SelectItem>
+                            <SelectItem value="highest">별점 높은순</SelectItem>
+                            <SelectItem value="lowest">별점 낮은순</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
-                    {reviews.map((review) => (
-                      <ReviewCard key={review.id} review={review} />
-                    ))}
+                    <div className="space-y-4">
+                      {finalReviews.map((review) => (
+                        <ReviewCard key={review.id} review={review} />
+                      ))}
+                    </div>
 
-                    {reviews.length === 0 && (
+                    {finalReviews.length === 0 && (
                       <Card className="rounded-3xl border-dashed border-2 border-slate-200 bg-transparent">
                         <CardContent className="p-16 text-center">
                           <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
