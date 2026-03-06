@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CourseCard } from '../components/CourseCard';
+import { CourseCardSkeleton } from '../components/course/CourseSkeleton';
 import { courseService, userService } from '../api/api';
-import { departments, semesters } from '../data/mockData';
+import { departments } from '../data/mockData';
 import { Course } from '../types/types';
-import { Loader2 } from 'lucide-react';
 
 export function SearchPage() {
   const [searchParams] = useSearchParams();
@@ -300,8 +300,10 @@ export function SearchPage() {
             </div>
 
             {isLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+              <div className="space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <CourseCardSkeleton key={i} />
+                ))}
               </div>
             ) : (
               <div className="space-y-4">

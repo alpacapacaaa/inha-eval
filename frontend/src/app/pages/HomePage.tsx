@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, Loader2 } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { CourseCard } from '../components/CourseCard';
+import { CourseCardSkeleton } from '../components/course/CourseSkeleton';
 import { courseService, reviewService } from '../api/api';
 import { Course } from '../types/types';
 
@@ -83,22 +84,20 @@ export function HomePage() {
       {/* Recent Reviews Section */}
       <div className="container mx-auto px-4 py-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">최근 등록된 강의평가</h2>
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentCourses.map((course) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {isLoading ? (
+            [1, 2, 3].map((i) => <CourseCardSkeleton key={i} />)
+          ) : (
+            recentCourses.map((course) => (
               <CourseCard
                 key={course.id}
                 course={course}
                 showPreview
                 previewText={course.latestReviewContent}
               />
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

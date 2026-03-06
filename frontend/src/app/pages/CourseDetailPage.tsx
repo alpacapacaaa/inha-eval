@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { Star, Lock, Plus, Loader2, BookOpen, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, Lock, Plus, BookOpen, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useCourseStats } from '../hooks/useCourseStats';
 import { CourseRadarChart } from '../components/course/CourseRadarChart';
 import { SyllabusModal } from '../components/course/SyllabusModal';
+import { CourseDetailSkeleton } from '../components/course/CourseSkeleton';
 
 export function CourseDetailPage() {
   const { id } = useParams();
@@ -57,8 +58,10 @@ export function CourseDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+      <div className="min-h-screen bg-gray-50/50 py-8">
+        <div className="container mx-auto px-4">
+          <CourseDetailSkeleton />
+        </div>
       </div>
     );
   }
