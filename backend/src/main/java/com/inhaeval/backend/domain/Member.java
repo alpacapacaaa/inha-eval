@@ -29,9 +29,6 @@ public class Member {
     private String department;
 
     @Column(nullable = false)
-    private String studentId;
-
-    @Column(nullable = false)
     @Enumerated(EnumType.STRING) // db에 숫자 대신 문자열로 저장 ("USER", "ADMIN")
     private Role role;           // 관리자 모드, 일반 유저 모드
 
