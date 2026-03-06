@@ -278,7 +278,7 @@ export const mockReviews: Review[] = [
 
 export const mockUser: User = {
   id: 'user1',
-  email: 'student@inha.ac.kr',
+  email: 'student@inha.edu',
   nickname: '익명학생',
   department: '컴퓨터공학과',
   points: 70,

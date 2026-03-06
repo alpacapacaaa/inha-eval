@@ -114,7 +114,7 @@ export const userService = {
   login: async (email: string, password?: string): Promise<User> => {
     await delay(500);
     // Simple mock logic
-    if (email === 'fail@inha.ac.kr') {
+    if (email === 'fail@inha.edu') {
       throw new Error('존재하지 않는 이메일입니다.');
     }
     if (password === 'wrong') {
@@ -144,8 +144,8 @@ export const userService = {
 
   sendVerificationEmail: async (email: string): Promise<void> => {
     await delay(600);
-    if (!email.endsWith('@inha.ac.kr')) {
-      throw new Error('인하대 이메일(@inha.ac.kr) 형식이 아닙니다.');
+    if (!email.endsWith('@inha.edu')) {
+      throw new Error('인하대 이메일(@inha.edu) 형식이 아닙니다.');
     }
     console.log(`Verification email sent to ${email} (Code: 123456)`);
     // Success

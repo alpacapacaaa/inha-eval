@@ -71,8 +71,8 @@ export function AuthPage({ onLogin }: AuthPageProps) {
   // --- Handlers for Signup ---
 
   const handleSendEmailCode = async () => {
-    if (!email.endsWith('@inha.ac.kr')) {
-      toast.error('인하대 이메일(@inha.ac.kr) 형식이 아닙니다.');
+    if (!email.endsWith('@inha.edu')) {
+      toast.error('인하대 이메일(@inha.edu) 형식이 아닙니다.');
       return;
     }
     setIsLoading(true);
@@ -270,7 +270,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
                       <Input
                         id="find-email"
                         type="email"
-                        placeholder="example@inha.ac.kr"
+                        placeholder="example@inha.edu"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="bg-gray-50 border-gray-200 rounded-xl h-12 px-4 focus:ring-2 focus:ring-indigo-500"
@@ -355,7 +355,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="example@inha.ac.kr"
+                      placeholder="example@inha.edu"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={isLoading}
@@ -408,7 +408,7 @@ export function AuthPage({ onLogin }: AuthPageProps) {
                       <div className="flex gap-2">
                         <Input
                           type="email"
-                          placeholder="example@inha.ac.kr"
+                          placeholder="example@inha.edu"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           disabled={isEmailVerified || isLoading}
