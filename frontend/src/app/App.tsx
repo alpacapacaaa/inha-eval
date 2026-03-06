@@ -8,6 +8,7 @@ import { CourseDetailPage } from './pages/CourseDetailPage';
 import { ReviewWritePage } from './pages/ReviewWritePage';
 import { MyPage } from './pages/MyPage';
 import { AuthPage } from './pages/AuthPage';
+import { toast } from 'sonner';
 import { userService } from './api/api';
 import { Loader2 } from 'lucide-react';
 
@@ -16,8 +17,14 @@ export default function App() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const user = await userService.getCurrentUser();
-      setIsLoggedIn(!!user);
+      try {
+        const user = await userService.getCurrentUser();
+        setIsLoggedIn(!!user);
+      } catch (error) {
+        console.error('Failed to check auth:', error);
+        toast.error('서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.');
+        setIsLoggedIn(false);
+      }
     };
     checkAuth();
   }, []);
@@ -27,8 +34,15 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await userService.logout();
-    setIsLoggedIn(false);
+    try {
+      await userService.logout();
+      toast.success('로그아웃 되었습니다.');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast.error('로그아웃 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoggedIn(false);
+    }
   };
 
   if (isLoggedIn === null) {
