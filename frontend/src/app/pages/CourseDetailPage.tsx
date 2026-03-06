@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { Star, Lock, Plus, Loader2, BookOpen, FileText, X, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { Star, Lock, Plus, Loader2, BookOpen, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -8,108 +8,9 @@ import { ReviewCard } from '../components/ReviewCard';
 import { courseService, reviewService, userService } from '../api/api';
 import { Course, Review, User } from '../types/types';
 import { toast } from 'sonner';
-
-const getAverageScore = (reviews: Review[], key: 'difficulty' | 'workload' | 'attendance' | 'grading', val5: string, val3: string, val1: string) => {
-  if (reviews.length === 0) return 3; // 기본값 모두 중간치
-  let sum = 0;
-  reviews.forEach(r => {
-    if (r[key] === val5) sum += 5;
-    else if (r[key] === val3) sum += 3;
-    else if (r[key] === val1) sum += 1;
-    else sum += 3;
-  });
-  return sum / reviews.length;
-};
-
-const getAverageNumericScore = (reviews: Review[], key: keyof Review, fallback: number) => {
-  const validReviews = reviews.filter(r => typeof r[key] === 'number');
-  if (validReviews.length === 0) return fallback;
-  return validReviews.reduce((sum, r) => sum + (r[key] as number), 0) / validReviews.length;
-};
-
-// 📊 심플하고 세련된 육각형 레이더 차트 (Light Frosted Theme)
-const HexagonRadarChart = ({ data, labels }: { data: number[], labels: string[] }) => {
-  const center = 100;
-  const maxRadius = 65; // 도형 최대 반지름 (더 넓게 펴서 시원하게)
-
-  const getPoint = (value: number, angleIndex: number) => {
-    const angle = (Math.PI / 3) * angleIndex - Math.PI / 2;
-    const r = (value / 5) * maxRadius;
-    return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`;
-  };
-
-  const polygonPoints = data.map((v, i) => getPoint(v, i)).join(" ");
-  const guides = [1, 2, 3, 4, 5].map(level => (
-    data.map((_, i) => getPoint(level, i)).join(" ")
-  ));
-
-  return (
-    <div className="relative w-full max-w-[260px] sm:max-w-[300px] mx-auto aspect-square z-10">
-      <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible">
-        {/* Background Grids (은은한 가이드라인) */}
-        {guides.map((pts, i) => (
-          <polygon
-            key={i}
-            points={pts}
-            fill={i === 4 ? "rgba(255,255,255,0.4)" : "none"}
-            stroke="currentColor"
-            className="text-slate-200"
-            strokeWidth="1"
-          />
-        ))}
-        {/* Axes (방사형 선) */}
-        {data.map((_, i) => (
-          <line
-            key={i}
-            x1={center}
-            y1={center}
-            x2={center + maxRadius * Math.cos((Math.PI / 3) * i - Math.PI / 2)}
-            y2={center + maxRadius * Math.sin((Math.PI / 3) * i - Math.PI / 2)}
-            stroke="currentColor"
-            className="text-slate-200"
-            strokeWidth="1"
-            strokeDasharray="2 2"
-          />
-        ))}
-
-        {/* Data Polygon Area */}
-        <polygon
-          points={polygonPoints}
-          className="fill-indigo-500/10 stroke-indigo-400 transition-all duration-1000 ease-out"
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-
-        {/* Data Points */}
-        {data.map((v, i) => {
-          const pt = getPoint(v, i).split(",");
-          return (
-            <circle key={i} cx={pt[0]} cy={pt[1]} r="3" className="fill-white stroke-indigo-400" strokeWidth="1.5" />
-          );
-        })}
-
-        {/* Texts (작고 깔끔한 폰트) */}
-        {labels.map((label, i) => {
-          const angle = (Math.PI / 3) * i - Math.PI / 2;
-          const r = maxRadius + 18;
-
-          return (
-            <text
-              key={i}
-              x={center + r * Math.cos(angle)}
-              y={center + r * Math.sin(angle) + 1}
-              textAnchor="middle"
-              alignmentBaseline="middle"
-              className="fill-slate-500 font-medium text-[10px] sm:text-[11px] tracking-tight cursor-default"
-            >
-              {label}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
+import { useCourseStats } from '../hooks/useCourseStats';
+import { CourseRadarChart } from '../components/course/CourseRadarChart';
+import { SyllabusModal } from '../components/course/SyllabusModal';
 
 export function CourseDetailPage() {
   const { id } = useParams();
@@ -119,15 +20,13 @@ export function CourseDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'reviews' | 'exams'>('reviews');
   const [isSyllabusOpen, setIsSyllabusOpen] = useState(false);
-  const [expandedWeeks, setExpandedWeeks] = useState<number[]>([]);
   const [expandedExams, setExpandedExams] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState<'latest' | 'highest' | 'lowest' | 'likes'>('latest');
 
-  const toggleWeek = (week: number) => {
-    setExpandedWeeks(prev =>
-      prev.includes(week) ? prev.filter(w => w !== week) : [...prev, week]
-    );
-  };
+  const { overallRating, statsData, statsLabels, isMajor } = useCourseStats(
+    course || ({} as Course),
+    reviews
+  );
 
   const toggleExam = (index: number) => {
     setExpandedExams(prev =>
@@ -201,47 +100,6 @@ export function CourseDetailPage() {
     );
   }
 
-  // 1) 리뷰 정렬 로직 적용
-  const finalReviews = [...reviews]
-    .sort((a, b) => {
-      if (sortBy === 'latest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      if (sortBy === 'highest') return b.rating - a.rating;
-      if (sortBy === 'lowest') return a.rating - b.rating;
-      if (sortBy === 'likes') return (b.likes || 0) - (a.likes || 0);
-      return 0;
-    });
-
-  const overallRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length) : course.rating;
-
-  // 🎮 육각형 게임 평점 스탯 추출 (1~5점 분포)
-  const fbDiffScore = getAverageScore(reviews, 'difficulty', 'hard', 'medium', 'easy');
-  const fbWorkScore = getAverageScore(reviews, 'workload', 'heavy', 'medium', 'light');
-  const fbAttScore = getAverageScore(reviews, 'attendance', 'strict', 'medium', 'flexible');
-  const fbGradScore = getAverageScore(reviews, 'grading', 'generous', 'medium', 'strict');
-
-  const diffScore = getAverageNumericScore(reviews, 'diffScore', fbDiffScore);
-  const workScore = getAverageNumericScore(reviews, 'workScore', fbWorkScore);
-  const attScore = getAverageNumericScore(reviews, 'attScore', fbAttScore);
-  const gradScore = getAverageNumericScore(reviews, 'gradScore', fbGradScore);
-
-  // 파생 스탯 (리뷰 기반 추정 - 폴백용)
-  const teachingScore = getAverageNumericScore(reviews, 'teachingScore', Math.min(5, Math.max(1, (overallRating * 0.7 + fbGradScore * 0.3))));
-  const prerequisiteScore = getAverageNumericScore(reviews, 'prerequisiteScore', Math.min(5, Math.max(1, (fbDiffScore * 0.6 + fbWorkScore * 0.4))));
-  const depthScore = getAverageNumericScore(reviews, 'depthScore', Math.min(5, Math.max(1, (fbDiffScore * 0.5 + fbWorkScore * 0.3 + (6 - fbGradScore) * 0.2))));
-  const timeInvestScore = getAverageNumericScore(reviews, 'timeInvestScore', Math.min(5, Math.max(1, (fbWorkScore * 0.5 + fbDiffScore * 0.3 + fbAttScore * 0.2))));
-  const pastExamScore = getAverageNumericScore(reviews, 'pastExamScore', Math.min(5, Math.max(1, (6 - fbDiffScore) * 0.6 + fbGradScore * 0.4)));
-
-  // 카테고리별 스탯 구성
-  const isMajor = course.category === '전공';
-
-  const statsData = isMajor
-    ? [diffScore, teachingScore, gradScore, workScore, prerequisiteScore, depthScore]
-    : [diffScore, timeInvestScore, gradScore, workScore, attScore, pastExamScore];
-
-  const statsLabels = isMajor
-    ? ['시험 난도', '강의력', '학점 비율', '과제량', '선수지식', '전공 심화도']
-    : ['시험 난도', '시간 투자', '학점 비율', '과제량', '출석체크', '족보 유효도'];
-
   const handlePurchaseAccess = async () => {
     try {
       const updatedUser = await userService.purchasePass();
@@ -256,151 +114,19 @@ export function CourseDetailPage() {
     }
   };
 
+  // 리뷰 정렬 로직 적용
+  const finalReviews = [...reviews].sort((a, b) => {
+    if (sortBy === 'latest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (sortBy === 'highest') return b.rating - a.rating;
+    if (sortBy === 'lowest') return a.rating - b.rating;
+    if (sortBy === 'likes') return (b.likes || 0) - (a.likes || 0);
+    return 0;
+  });
+
   return (
-    <>
-      {/* Syllabus Modal (1안: 모달 팝업) */}
-      {isSyllabusOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden outline-none">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl shadow-inner border border-indigo-100/50">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-[17px] font-black text-slate-900 tracking-tight leading-tight">25학년도 1학기 강의계획서</h2>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">{course?.name} · {course?.professor} 교수님</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsSyllabusOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Modal Body (Scrollable) */}
-            <div className="p-5 sm:p-6 overflow-y-auto w-full space-y-6 no-scrollbar">
-
-              {/* 강의 기본 정보 (진행방식, 수업방법, 유의사항) */}
-              <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
-                  <span className="text-[11px] font-extrabold text-slate-400 w-20 shrink-0">강의진행방식</span>
-                  <p className="text-[12px] font-medium text-slate-700 leading-relaxed">
-                    이론 강의(70%)와 실습(30%)을 병행하며, 매주 배운 내용을 기반으로 미니 프로젝트를 수행합니다.
-                  </p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
-                  <span className="text-[11px] font-extrabold text-slate-400 w-20 shrink-0">수업방법</span>
-                  <p className="text-[12px] font-medium text-slate-700 leading-relaxed">
-                    대면 강의 원칙. 필요시 일부 특강은 Zoom을 통한 비대면 화상 강의로 진행될 수 있습니다.
-                  </p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
-                  <span className="text-[11px] font-extrabold text-red-400/80 w-20 shrink-0">수강시유의사항</span>
-                  <p className="text-[12px] font-medium text-slate-700 leading-relaxed">
-                    지각 3회는 결석 1회로 간주하며, 전체 수업의 1/4 이상 결석 시 성적과 무관하게 F(낙제) 처리됩니다. 기한 내 과제 미제출 시 0점 부여.
-                  </p>
-                </div>
-              </div>
-
-              {/* 성적 비율 (Cards) */}
-              <div>
-                <h3 className="text-xs border-b border-slate-100 pb-2 mb-3 font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-1 h-1 bg-indigo-500 rounded-full"></span>
-                  평가 기준
-                </h3>
-                <div className="grid grid-cols-4 gap-2 sm:gap-3 text-center">
-                  <div className="bg-slate-50 p-2 sm:p-3 rounded-xl border border-slate-200/50 shadow-sm">
-                    <span className="block text-[10px] text-slate-500 font-extrabold tracking-wider mb-0.5">중간고사</span>
-                    <span className="text-base sm:text-lg font-black text-slate-800">40%</span>
-                  </div>
-                  <div className="bg-slate-50 p-2 sm:p-3 rounded-xl border border-slate-200/50 shadow-sm">
-                    <span className="block text-[10px] text-slate-500 font-extrabold tracking-wider mb-0.5">기말고사</span>
-                    <span className="text-base sm:text-lg font-black text-slate-800">40%</span>
-                  </div>
-                  <div className="bg-slate-50 p-2 sm:p-3 rounded-xl border border-slate-200/50 shadow-sm">
-                    <span className="block text-[10px] text-slate-500 font-extrabold tracking-wider mb-0.5">과제</span>
-                    <span className="text-base sm:text-lg font-black text-slate-800">10%</span>
-                  </div>
-                  <div className="bg-slate-50 p-2 sm:p-3 rounded-xl border border-slate-200/50 shadow-sm">
-                    <span className="block text-[10px] text-slate-500 font-extrabold tracking-wider mb-0.5">출석</span>
-                    <span className="text-base sm:text-lg font-black text-slate-800">10%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 주차별 강의 계획 (Table) */}
-              <div>
-                <h3 className="text-xs border-b border-slate-100 pb-2 mb-3 font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-1 h-1 bg-indigo-500 rounded-full"></span>
-                  주차별 학습 계획
-                </h3>
-                <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-500">
-                      <tr>
-                        <th className="py-2.5 px-3 w-14 text-center font-extrabold text-[11px]">주차</th>
-                        <th className="py-2.5 px-3 font-extrabold text-[11px]">학습 내용</th>
-                        <th className="py-2.5 px-3 w-20 text-center font-extrabold text-[11px]">비고</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {[
-                        { week: 1, topic: '강의 오리엔테이션 및 교과목 개요', note: '', detail: '교과목 소개, 성적 평가 방법 안내, 수강생 목적 및 학습 수준 파악' },
-                        { week: 2, topic: '제 1장: 기본 개념 및 이론 설명', note: '', detail: '핵심 개념 정의, 역사적 배경과 실무 응용 사례를 통한 기초 확립' },
-                        { week: 3, topic: '제 2장: 심화 모델 설계 (1)', note: '개인과제', detail: '모델링 기초 이론, 사례 연구를 통한 실무 실습, 첫 번째 개인 평가 과제 부여' },
-                        { week: 4, topic: '제 2장: 심화 모델 설계 (2)', note: '', detail: '데이터 수집 및 전처리 기법, 통계적 검증 방법론 및 Q&A 진행' },
-                        { week: 5, topic: '제 3장: 아키텍처 패턴 분석', note: '', detail: '소프트웨어 아키텍처(MVC, MVVM 등) 비교 분석 및 장단점 토론' },
-                        { week: 6, topic: '제 4장: 중간고사 대비 총정리', note: '', detail: '1주차~5주차 핵심 내용 요약 복습, 기출 유형 분석 및 예상 문제 풀이' },
-                        { week: 7, topic: '중간고사 (Middle Exam)', note: '대면', detail: '지정된 강의실에서 오프라인 지필고사 진행 (객관식 20문항 + 단답형 5문항)' },
-                        { week: 8, topic: '제 5장: 네트워크 인프라 기초', note: '', detail: 'TCP/IP 모델의 7계층 이해, HTTP 프로토콜 기초 및 웹 트래픽 분석 실습' },
-                        { week: 9, topic: '제 6장: 데이터베이스 심화', note: '팀편성', detail: '정규화 이론, B-Tree 인덱싱 최적화 기법, 기말 팀 프로젝트 조 편성' },
-                        { week: 10, topic: '제 7장: 종합 실습 및 방법론', note: '팀플시작', detail: '팀별 프로젝트 주제 선정 회의, MVP(최소 기능 제품) 요구사항 명세서 작성 가이드' },
-                        { week: 15, topic: '기말고사 (Final Exam)', note: '대면', detail: '1학기 전체 범위 오프라인 시험 (서술형/논술형 위주) 및 최종 팀 프로젝트 결과물 발표' },
-                      ].map((w, i) => {
-                        const isExpanded = expandedWeeks.includes(w.week);
-                        return (
-                          <React.Fragment key={i}>
-                            <tr
-                              onClick={() => toggleWeek(w.week)}
-                              className={`cursor-pointer transition-colors hover:bg-slate-50/80 ${w.week === 7 || w.week === 15 ? 'bg-amber-50/40 hover:bg-amber-50/60' : ''}`}
-                            >
-                              <td className="py-2.5 px-3 text-center font-bold text-slate-700">{w.week}주</td>
-                              <td className={`py-2.5 px-3 font-medium flex items-center gap-1.5 ${w.week === 7 || w.week === 15 ? 'text-amber-800 font-bold' : 'text-slate-600'}`}>
-                                {w.topic}
-                                <span className="ml-auto text-slate-300">
-                                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-center text-[10px] font-extrabold text-indigo-500">{w.note}</td>
-                            </tr>
-                            {/* Expanded Detail Row */}
-                            {isExpanded && (
-                              <tr className="bg-indigo-50/30 animate-in fade-in duration-200">
-                                <td colSpan={3} className="px-5 py-3.5 border-t border-indigo-50/50">
-                                  <div className="flex gap-2.5 items-start">
-                                    <span className="text-indigo-400 mt-0.5 shrink-0 opacity-80 text-sm font-bold">↳</span>
-                                    <p className="text-[11px] text-slate-600 leading-relaxed font-semibold">
-                                      {w.detail}
-                                    </p>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
+    <React.Fragment>
+      {isSyllabusOpen && course && (
+        <SyllabusModal course={course} onClose={() => setIsSyllabusOpen(false)} />
       )}
 
       <div className="min-h-screen bg-gray-50/50">
@@ -472,17 +198,10 @@ export function CourseDetailPage() {
                 </div>
 
                 {/* 오른쪽: 육각형 레이더 차트 */}
-                <div className="flex-1 flex flex-col justify-center items-center py-2">
-                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest w-full flex items-center justify-center md:justify-start mb-6 md:ml-4">
-                    <Activity className="w-3.5 h-3.5 mr-2 text-indigo-400" />
-                    Course Analytics
-                  </h3>
-
-                  <HexagonRadarChart data={statsData} labels={statsLabels} />
-                </div>
+                <CourseRadarChart data={statsData} labels={statsLabels} />
               </div>
-            </div>
 
+            </div>
             {/* Access Gate (Logged In, No Pass) */}
             {!user.hasPass && (
               <Card className="mb-6 border-indigo-200 bg-indigo-50/50 shadow-md rounded-[2rem] overflow-hidden">
@@ -689,6 +408,6 @@ export function CourseDetailPage() {
           </div>
         </div>
       </div>
-    </>
+    </React.Fragment>
   );
 }
