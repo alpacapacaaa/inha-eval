@@ -39,9 +39,9 @@ export function CourseCard({ course, showPreview = false, previewText }: CourseC
   const stars = Array.from({ length: 5 }, (_, i) => i < Math.round(course.rating));
 
   return (
-    <Link to={`/course/${course.id}`}>
-      <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-        <CardContent className="p-4">
+    <Link to={`/course/${course.id}`} className="h-full block">
+      <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
+        <CardContent className="p-4 h-full">
           <div className="space-y-3">
             <div>
               <h3 className="font-bold text-lg text-slate-800 tracking-tight">{course.name}</h3>
