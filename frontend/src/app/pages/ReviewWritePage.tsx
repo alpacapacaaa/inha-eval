@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { Star, Loader2, Sparkles, AlertCircle, Activity } from 'lucide-react';
+import { Star, Loader2, Sparkles, AlertCircle, Activity, X, Plus } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
@@ -15,8 +15,8 @@ import { toast } from 'sonner';
 
 const semesters = ['2025-2학기', '2025-1학기', '2024-2학기', '2024-1학기'];
 const examTypeOptions = ['객관식', '단답형', '주관식/서술형', '오픈북', '과제 대체', '실습/발표', '조별 발표', '코드 짜기'];
-const recommendOptions = ['벼락치기 가능', '성실한 출석러', '팀플/발표 선호', '이해력 중시', '암기력 중시', '독강러(혼자 듣기 좋음)', '교수님과 소통 원함', '무난한 꿀교양 찾는 분', '과제 매니아'];
-const notRecommendOptions = ['암기 취약', '팀플 극혐', '발표 공포증', '수학/계산 약함', '독학 선호', '벼락치기 선호', '출석 잘 안 하는 분', '발제/토론 기피자', '코딩 혐오'];
+const recommendOptions = ['벼락치기 가능', '성실한 출석러', '팀플/발표 선호'];
+const notRecommendOptions = ['암기 취약', '팀플 극혐', '발표 공포증'];
 
 export function ReviewWritePage() {
   const { courseId } = useParams();
@@ -49,9 +49,13 @@ export function ReviewWritePage() {
   const [examTypes, setExamTypes] = useState<string[]>([]);
   const [assignmentType, setAssignmentType] = useState<string>('개인 과제 위주');
   const [textbook, setTextbook] = useState<string>('참고용');
-  const [oneLineTip, setOneLineTip] = useState('');
+  const [examInfo, setExamInfo] = useState('');
   const [recommendFor, setRecommendFor] = useState<string[]>([]);
   const [notRecommendFor, setNotRecommendFor] = useState<string[]>([]);
+  const [tempRecommend, setTempRecommend] = useState('');
+  const [tempNotRecommend, setTempNotRecommend] = useState('');
+  const [examKeywords, setExamKeywords] = useState<string[]>([]);
+  const [tempKeyword, setTempKeyword] = useState('');
 
   const [content, setContent] = useState('');
 
@@ -96,6 +100,17 @@ export function ReviewWritePage() {
     }
   };
 
+  const addKeyword = () => {
+    if (tempKeyword.trim() && !examKeywords.includes(tempKeyword.trim())) {
+      setExamKeywords([...examKeywords, tempKeyword.trim()]);
+      setTempKeyword('');
+    }
+  };
+
+  const removeKeyword = (target: string) => {
+    setExamKeywords(examKeywords.filter(k => k !== target));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -133,8 +148,13 @@ export function ReviewWritePage() {
         timeInvestScore,
         attScore,
         pastExamScore,
-        // Optional parameters backend might ignore for now or we can structure inside a JSON string
-        // examTypes, assignmentType, textbook, oneLineTip, recommendFor, notRecommendFor
+        examTypes,
+        assignmentType,
+        textbook,
+        examInfo,
+        examKeywords,
+        recommendFor,
+        notRecommendFor,
       });
 
       await userService.addPoints(30, '상세 강의평 작성');
@@ -275,90 +295,237 @@ export function ReviewWritePage() {
               </div>
             </div>
 
-            {/* 🔥 추가 상세 정보 (Accordion) */}
-            <Accordion type="single" collapsible className="w-full border rounded-xl overflow-hidden shadow-sm">
-              <AccordionItem value="detailed-info" className="border-b-0">
-                <AccordionTrigger className="px-5 py-4 bg-gray-50 hover:bg-gray-100/80 transition-colors font-bold text-gray-800">
-                  선택 사항 (자세히 적고 포인트 더 받기)
-                </AccordionTrigger>
-                <AccordionContent className="px-5 py-6 bg-white space-y-8">
+            {/* 시험 방식 (다중 선택) */}
+            <div className="space-y-3 pt-6 border-t border-slate-100">
+              <Label className="text-base font-semibold text-gray-800">시험 방식 (다중 선택 가능)</Label>
+              <div className="flex flex-wrap gap-2">
+                {examTypeOptions.map((item) => {
+                  const isChecked = examTypes.includes(item);
+                  return (
+                    <label key={item} className={`flex items-center px-4 py-2 rounded-full border cursor-pointer transition-all ${isChecked ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      <Checkbox
+                        className="sr-only"
+                        checked={isChecked}
+                        onCheckedChange={() => toggleSelection(item, examTypes, setExamTypes)}
+                      />
+                      {item}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
 
-                  {/* 시험 방식 (다중 선택) */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-medium text-gray-800">시험 방식 (다중 선택 가능)</Label>
+            {/* 과제 유형 */}
+            <div className="space-y-3 pt-4">
+              <Label className="text-base font-semibold text-gray-800">과제 및 팀플 비중</Label>
+              <RadioGroup value={assignmentType} onValueChange={setAssignmentType} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['개인 과제 위주', '팀플 위주', '초반에만 있음', '과제 없음'].map((item) => (
+                  <div key={item}>
+                    <RadioGroupItem value={item} id={`assign-${item}`} className="peer sr-only" />
+                    <Label htmlFor={`assign-${item}`} className="flex justify-center p-2.5 text-sm border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 hover:bg-gray-50">
+                      {item}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+
+            {/* 교재 사용 */}
+            <div className="space-y-3 pt-4">
+              <Label className="text-base font-semibold text-gray-800">교재 사용도</Label>
+              <RadioGroup value={textbook} onValueChange={setTextbook} className="grid grid-cols-2 gap-3">
+                {['무조건 사야함 (필수)', '참고용', '교수님 PPT 위주', '거의 안 씀'].map((item) => (
+                  <div key={item}>
+                    <RadioGroupItem value={item} id={`book-${item}`} className="peer sr-only" />
+                    <Label htmlFor={`book-${item}`} className="flex justify-center p-2.5 text-sm border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 hover:bg-gray-50">
+                      {item}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+
+            {/* 추천 대상 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+              <div className="flex flex-col h-full bg-green-50/50 p-5 rounded-2xl border border-green-100 shadow-sm">
+                <div className="flex-1 space-y-4">
+                  <Label className="text-sm font-bold text-green-800 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" />
+                    이런 분들께 추천해요
+                  </Label>
+                  <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap gap-2">
-                      {examTypeOptions.map((item) => {
-                        const isChecked = examTypes.includes(item);
-                        return (
-                          <label key={item} className={`flex items-center px-4 py-2 rounded-full border cursor-pointer transition-all ${isChecked ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                            <Checkbox
-                              className="sr-only"
-                              checked={isChecked}
-                              onCheckedChange={() => toggleSelection(item, examTypes, setExamTypes)}
-                            />
-                            {item}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* 과제 유형 */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-medium text-gray-800">과제 및 팀플 비중</Label>
-                    <RadioGroup value={assignmentType} onValueChange={setAssignmentType} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {['개인 과제 위주', '팀플 위주', '초반에만 있음', '과제 없음'].map((item) => (
-                        <div key={item}>
-                          <RadioGroupItem value={item} id={`assign-${item}`} className="peer sr-only" />
-                          <Label htmlFor={`assign-${item}`} className="flex justify-center p-2.5 text-sm border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 hover:bg-gray-50">
-                            {item}
-                          </Label>
-                        </div>
+                      {recommendOptions.map((item) => (
+                        <label key={item} className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border text-[13px] font-bold transition-all ${recommendFor.includes(item) ? 'bg-green-600 text-white border-green-600 shadow-sm' : 'bg-white text-green-700 border-green-200 hover:bg-green-50'}`}>
+                          <Checkbox className="sr-only" checked={recommendFor.includes(item)} onCheckedChange={() => toggleSelection(item, recommendFor, setRecommendFor)} />
+                          {item}
+                        </label>
                       ))}
-                    </RadioGroup>
-                  </div>
+                    </div>
 
-                  {/* 교재 사용 */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-medium text-gray-800">교재 사용도</Label>
-                    <RadioGroup value={textbook} onValueChange={setTextbook} className="grid grid-cols-2 gap-3">
-                      {['무조건 사야함 (필수)', '참고용', '교수님 PPT 위주', '거의 안 씀'].map((item) => (
-                        <div key={item}>
-                          <RadioGroupItem value={item} id={`book-${item}`} className="peer sr-only" />
-                          <Label htmlFor={`book-${item}`} className="flex justify-center p-2.5 text-sm border rounded-lg cursor-pointer peer-data-[state=checked]:bg-indigo-50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:text-indigo-700 hover:bg-gray-50">
-                            {item}
-                          </Label>
-                        </div>
+                    <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+                      {recommendFor.filter(item => !recommendOptions.includes(item)).map(item => (
+                        <span key={item} className="bg-white text-green-700 font-bold px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 border border-green-100 shadow-sm">
+                          {item}
+                          <button type="button" onClick={() => toggleSelection(item, recommendFor, setRecommendFor)}><X className="w-2.5 h-2.5" /></button>
+                        </span>
                       ))}
-                    </RadioGroup>
-                  </div>
-
-                  {/* 추천 대상 */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3 bg-green-50/50 p-4 rounded-xl border border-green-100">
-                      <Label className="text-sm font-bold text-green-800">이런 분들께 추천해요 👍</Label>
-                      <div className="flex flex-col gap-2">
-                        {recommendOptions.map((item) => (
-                          <label key={item} className="flex items-center gap-2 cursor-pointer p-1">
-                            <Checkbox checked={recommendFor.includes(item)} onCheckedChange={() => toggleSelection(item, recommendFor, setRecommendFor)} />
-                            <span className="text-sm text-gray-700">{item}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-3 bg-red-50/50 p-4 rounded-xl border border-red-100">
-                      <Label className="text-sm font-bold text-red-800">이런 분들은 피하세요 👎</Label>
-                      <div className="flex flex-col gap-2">
-                        {notRecommendOptions.map((item) => (
-                          <label key={item} className="flex items-center gap-2 cursor-pointer p-1">
-                            <Checkbox checked={notRecommendFor.includes(item)} onCheckedChange={() => toggleSelection(item, notRecommendFor, setNotRecommendFor)} />
-                            <span className="text-sm text-gray-700">{item}</span>
-                          </label>
-                        ))}
-                      </div>
                     </div>
                   </div>
+                </div>
 
+                <div className="mt-auto pt-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="추천 항목 직접 추가..."
+                      value={tempRecommend}
+                      onChange={(e) => setTempRecommend(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (tempRecommend.trim()) {
+                            toggleSelection(tempRecommend.trim(), recommendFor, setRecommendFor);
+                            setTempRecommend('');
+                          }
+                        }
+                      }}
+                      className="bg-white border-green-100 focus:border-green-400 focus:ring-green-400 rounded-xl text-sm"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (tempRecommend.trim()) {
+                          toggleSelection(tempRecommend.trim(), recommendFor, setRecommendFor);
+                          setTempRecommend('');
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white rounded-xl h-10 w-10 p-0 shrink-0"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col h-full space-y-4 bg-red-50/50 p-5 rounded-2xl border border-red-100 shadow-sm">
+                <div className="flex-1 space-y-4">
+                  <Label className="text-sm font-bold text-red-800 flex items-center gap-1.5">
+                    <X className="w-3.5 h-3.5" />
+                    이런 분들은 피하세요
+                  </Label>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {notRecommendOptions.map((item) => (
+                        <label key={item} className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border text-[13px] font-bold transition-all ${notRecommendFor.includes(item) ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white text-red-700 border-red-200 hover:bg-red-50'}`}>
+                          <Checkbox className="sr-only" checked={notRecommendFor.includes(item)} onCheckedChange={() => toggleSelection(item, notRecommendFor, setNotRecommendFor)} />
+                          {item}
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+                      {notRecommendFor.filter(item => !notRecommendOptions.includes(item)).map(item => (
+                        <span key={item} className="bg-white text-red-700 font-bold px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 border border-red-100 shadow-sm">
+                          {item}
+                          <button type="button" onClick={() => toggleSelection(item, notRecommendFor, setNotRecommendFor)}><X className="w-2.5 h-2.5" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-auto pt-2">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="비추천 항목 직접 추가..."
+                      value={tempNotRecommend}
+                      onChange={(e) => setTempNotRecommend(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (tempNotRecommend.trim()) {
+                            toggleSelection(tempNotRecommend.trim(), notRecommendFor, setNotRecommendFor);
+                            setTempNotRecommend('');
+                          }
+                        }
+                      }}
+                      className="bg-white border-red-100 focus:border-red-400 focus:ring-red-400 rounded-xl text-sm"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (tempNotRecommend.trim()) {
+                          toggleSelection(tempNotRecommend.trim(), notRecommendFor, setNotRecommendFor);
+                          setTempNotRecommend('');
+                        }
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 w-10 p-0 shrink-0"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🔥 추가 시험 / 족보 정보 (Accordion) */}
+            <Accordion type="single" collapsible className="w-full border rounded-xl overflow-hidden shadow-sm mt-4">
+              <AccordionItem value="exam-info" className="border-b-0">
+                <AccordionTrigger className="px-5 py-4 bg-amber-50/50 hover:bg-amber-100/50 transition-colors font-bold text-amber-900 border-amber-100">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
+                    시험 출제 방식이나 족보 등 (선택 사항)
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-5 py-6 bg-white">
+                  <Textarea
+                    value={examInfo}
+                    onChange={(e) => setExamInfo(e.target.value)}
+                    placeholder="시험 문제 스타일이나 핵심 키워드, 족보와 비교해서 얼마나 나오는지 적어주세요!"
+                    className="min-h-[120px] p-4 text-sm resize-none border-gray-200 focus:border-amber-400 focus:ring-amber-400 rounded-xl leading-relaxed mb-6"
+                  />
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                      <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                      많이 나온 키워드 추가
+                    </Label>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {examKeywords.map((k) => (
+                        <span key={k} className="bg-amber-50 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 border border-amber-100 shadow-sm animate-in zoom-in-95 duration-200">
+                          {k}
+                          <button type="button" onClick={() => removeKeyword(k)} className="hover:text-amber-900 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {examKeywords.length === 0 && (
+                        <p className="text-xs text-slate-400 italic">아직 추가된 키워드가 없습니다.</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={tempKeyword}
+                        onChange={(e) => setTempKeyword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addKeyword();
+                          }
+                        }}
+                        placeholder="예: 프레임워크, UML, 객체지향..."
+                        className="bg-gray-50 border-gray-100 focus:border-amber-400 focus:ring-amber-400 rounded-xl"
+                      />
+                      <Button
+                        type="button"
+                        onClick={addKeyword}
+                        className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl aspect-square p-0 w-10 shrink-0"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">엔터를 치거나 + 버튼을 눌러 키워드를 추가할 수 있습니다.</p>
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
