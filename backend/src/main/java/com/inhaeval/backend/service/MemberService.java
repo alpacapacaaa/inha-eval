@@ -29,14 +29,10 @@ public class MemberService {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
         }
 
-        if(memberRepository.existsByStudentId(request.getStudentId()))
-            throw new IllegalArgumentException("이미 사용 중인 학번입니다.");
-
         Member member = Member.builder()
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .nickname(request.getNickname())
-                .studentId(request.getStudentId())
                 .department(request.getDepartment())
                 .build();
         memberRepository.save(member);

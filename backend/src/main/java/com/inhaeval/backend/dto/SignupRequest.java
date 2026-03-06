@@ -14,10 +14,6 @@ public class SignupRequest {
     @Pattern(regexp = ".*@inha\\.ac\\.kr$", message = "인하대 이메일만 가입 가능합니다")
     private String email;
 
-    @NotBlank(message = "학번을 입력해주세요")
-    @Pattern(regexp = "^[0-9]{8}$", message = "학번은 8자리 숫자입니다")
-    private String studentId;
-
     @NotBlank(message = "비밀번호를 입력해주세요")
     @Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
     private String password;
