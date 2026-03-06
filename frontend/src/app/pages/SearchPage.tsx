@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CourseCard } from '../components/CourseCard';
-import { courseService } from '../api/api';
+import { courseService, userService } from '../api/api';
 import { departments, semesters } from '../data/mockData';
 import { Course } from '../types/types';
 import { Loader2 } from 'lucide-react';
@@ -17,6 +17,21 @@ export function SearchPage() {
   const [selectedDepartment, setSelectedDepartment] = useState('전체');
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 현재 사용자 학과 정보 가져오기
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const user = await userService.getCurrentUser();
+        if (user && user.department) {
+          setSelectedDepartment(user.department);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const majorTypes = ['전공필수', '전공선택', '전공기초'];
 
@@ -157,8 +172,8 @@ export function SearchPage() {
                             key={theme.id}
                             onClick={() => setSelectedTheme(theme.id)}
                             className={`group flex flex-col items-start px-4 py-3 rounded-2xl border transition-all text-left ${selectedTheme === theme.id
-                                ? 'bg-amber-50 border-amber-200 shadow-sm'
-                                : 'bg-white border-slate-100 hover:border-slate-300'
+                              ? 'bg-amber-50 border-amber-200 shadow-sm'
+                              : 'bg-white border-slate-100 hover:border-slate-300'
                               }`}
                           >
                             <div className="flex items-center justify-between w-full">
@@ -209,30 +224,45 @@ export function SearchPage() {
                         <div key={groupName} className="space-y-3">
                           <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">{groupName}</label>
                           <div className="grid grid-cols-1 gap-1.5">
-                            {types.map(type => (
-                              <button
-                                key={type}
-                                onClick={() => toggleType(type)}
-                                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left text-[12.5px] font-semibold transition-all ${selectedTypes.includes(type)
-                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm'
-                                  : 'bg-white border-slate-100 text-slate-600 hover:border-slate-300'
-                                  }`}
-                              >
-                                <span className="truncate pr-2">
-                                  {(() => {
-                                    if (type.includes('-')) {
-                                      const parts = type.split('-');
-                                      const areaPart = parts[1].split('.');
-                                      return `${areaPart[0]}영역. ${areaPart[1] || ''}`;
-                                    }
-                                    return type;
-                                  })()}
-                                </span>
-                                {selectedTypes.includes(type) && (
-                                  <div className="shrink-0 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                                )}
-                              </button>
-                            ))}
+                            {types.map(type => {
+                              const isRequired = selectedDepartment === '컴퓨터공학과' && (
+                                type.startsWith('핵심교양-1') ||
+                                type.startsWith('핵심교양-2') ||
+                                type.startsWith('핵심교양-4') ||
+                                type.startsWith('핵심교양-6') ||
+                                type.startsWith('일반교양-7') ||
+                                type === '창의'
+                              );
+
+                              return (
+                                <button
+                                  key={type}
+                                  onClick={() => toggleType(type)}
+                                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left text-[12.5px] font-semibold transition-all ${selectedTypes.includes(type)
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm'
+                                    : isRequired
+                                      ? 'bg-indigo-50/70 border-indigo-200/80 text-indigo-800 hover:bg-indigo-100/70 hover:border-indigo-300'
+                                      : 'bg-white border-slate-100 text-slate-600 hover:border-slate-300'
+                                    }`}
+                                >
+                                  <span className="flex items-center gap-1.5 truncate pr-2">
+                                    <span className="truncate">
+                                      {(() => {
+                                        if (type.includes('-')) {
+                                          const parts = type.split('-');
+                                          const areaPart = parts[1].split('.');
+                                          return `${areaPart[0]}영역. ${areaPart[1] || ''}`;
+                                        }
+                                        return type;
+                                      })()}
+                                    </span>
+                                  </span>
+                                  {selectedTypes.includes(type) && (
+                                    <div className="shrink-0 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
