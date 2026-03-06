@@ -3,8 +3,8 @@ import { Card, CardContent } from "../ui/card";
 
 export function CourseCardSkeleton() {
     return (
-        <Card className="border-gray-100 shadow-sm">
-            <CardContent className="p-4">
+        <Card className="border-gray-100 shadow-sm h-full">
+            <CardContent className="p-4 h-full">
                 <div className="space-y-3">
                     <div>
                         <Skeleton className="h-6 w-[60%] mb-2" />

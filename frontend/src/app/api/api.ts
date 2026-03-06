@@ -32,10 +32,23 @@ export const courseService = {
           c.professor.toLowerCase().includes(lowerQuery) ||
           c.department.toLowerCase().includes(lowerQuery)) &&
         (!department || department === '전체' || c.department === department)
-      // Semester filtering might need to check if the course was offered in that semester
-      // For now, mockCourses doesn't have a semester field (it's in reviews).
-      // We'll ignore semester filtering on courses for this mock or assume all courses are available.
     );
+  },
+
+  getHoneyGE: async (): Promise<Course[]> => {
+    await delay(300);
+    return courses
+      .filter((c) => c.category === '교양' && (c.difficulty === 'easy' || c.rating >= 4.0))
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 3);
+  },
+
+  getMajorRecommended: async (department: string): Promise<Course[]> => {
+    await delay(300);
+    return courses
+      .filter((c) => c.department === department && c.category === '전공')
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 3);
   },
 };
 
