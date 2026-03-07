@@ -1,8 +1,10 @@
 package com.inhaeval.backend.service;
 
+import com.inhaeval.backend.exception.CustomException;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -38,7 +40,7 @@ public class MailService {
 
             mailSender.send(message);
         } catch (MessagingException e) {
-            throw new RuntimeException("메일 발송에 실패했습니다.", e);
+            throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "메일 발송에 실패했습니다.");
         }
     }
 }

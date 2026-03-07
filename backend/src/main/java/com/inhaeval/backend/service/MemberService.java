@@ -6,10 +6,12 @@ import com.inhaeval.backend.dto.LoginRequest;
 import com.inhaeval.backend.dto.LoginResponse;
 import com.inhaeval.backend.dto.SignupRequest;
 import com.inhaeval.backend.dto.SignupResponse;
+import com.inhaeval.backend.exception.CustomException;
 import com.inhaeval.backend.repository.EmailVerificationRepository;
 import com.inhaeval.backend.repository.MemberRepository;
 import com.inhaeval.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +32,7 @@ public class MemberService {
     public SignupResponse signup(SignupRequest request){
 
         if(memberRepository.existsByEmail(request.getEmail())){
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+            throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
 
         Member member = Member.builder()
@@ -61,18 +63,18 @@ public class MemberService {
     public LoginResponse login(LoginRequest request) {
 
         Member member = memberRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
+                .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "존재하지 않는 이메일입니다."));
 
         if (!member.isVerified()){
-            throw new IllegalArgumentException("이메일 인증이 필요합니다.");
+            throw new CustomException(HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다.");
         }
 
         if(!member.isActive()) {
-            throw new IllegalArgumentException("탈퇴한 회원입니다.");
+            throw new CustomException(HttpStatus.FORBIDDEN, "탈퇴한 회원입니다.");
         }
 
         if(!passwordEncoder.matches(request.getPassword(), member.getPassword())) {
-            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다.");
         }
 
         String token = jwtUtil.generateToken(member.getEmail());
