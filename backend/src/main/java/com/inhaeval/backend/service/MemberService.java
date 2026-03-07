@@ -28,6 +28,25 @@ public class MemberService {
     private final MailService mailService;
     private final JwtUtil jwtUtil;
 
+    // 이메일 인증 메일 발송
+    @Transactional
+    public void sendVerificationEmail(String email) {
+
+        if (memberRepository.existsByEmail(email)) {
+            throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
+        }
+
+        String token = UUID.randomUUID().toString();
+
+        EmailVerification verification = EmailVerification.builder()
+                .email(email)
+                .token(token)
+                .build();
+        emailVerificationRepository.save(verification);
+
+        mailService.sendVerificationEmail(email, token);
+    }
+
     @Transactional
     public SignupResponse signup(SignupRequest request){
 
@@ -43,19 +62,10 @@ public class MemberService {
                 .build();
         memberRepository.save(member);
 
-        String token = UUID.randomUUID().toString();    // 랜덤 토큰 생성
-
-        EmailVerification verification = EmailVerification.builder()
-                .email(request.getEmail())
-                .token(token)   // 메일 인증 시 URL에 포함될 토큰
-                .build();
-        emailVerificationRepository.save(verification);
-
-        mailService.sendVerificationEmail(request.getEmail(), token);
-
         return SignupResponse.builder()
-                .email(member.getEmail())
+                .accessToken(jwtUtil.generateToken(member.getEmail()))
                 .nickname(member.getNickname())
+                .points(member.getPoints())
                 .build();
     }
 
