@@ -13,3 +13,11 @@ backend/target/
 .DS_Store
 *.iml
 .idea/
+
+# Python / Crawler
+crawler/venv/
+crawler/__pycache__/
+crawler/debug_*.html
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
