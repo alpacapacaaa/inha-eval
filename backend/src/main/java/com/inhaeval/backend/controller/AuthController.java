@@ -1,5 +1,7 @@
 package com.inhaeval.backend.controller;
 
+import com.inhaeval.backend.dto.LoginRequest;
+import com.inhaeval.backend.dto.LoginResponse;
 import com.inhaeval.backend.dto.SignupRequest;
 import com.inhaeval.backend.dto.SignupResponse;
 import com.inhaeval.backend.service.EmailVerificationService;
@@ -27,5 +29,11 @@ public class AuthController {
     public ResponseEntity<Void> verify(@RequestParam String token){
         emailVerificationService.verifyToken(token);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request){
+        LoginResponse response = memberService.login(request);
+        return ResponseEntity.ok(response);
     }
 }
