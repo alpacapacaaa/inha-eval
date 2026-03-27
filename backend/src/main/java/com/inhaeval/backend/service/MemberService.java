@@ -37,7 +37,7 @@ public class MemberService {
     @Transactional
     public void sendVerificationEmail(String email) {
 
-        if (memberRepository.existsByEmail(email)) {
+        if (memberRepository.existsByEmailAndIsActiveTrue(email)) {
             throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
 
@@ -65,15 +65,15 @@ public class MemberService {
     @Transactional
     public SignupResponse signup(SignupRequest request){
 
-        if(memberRepository.existsByEmail(request.getEmail())){
+        if(memberRepository.existsByEmailAndIsActiveTrue(request.getEmail())){
             throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
 
-        if (memberRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+        if (memberRepository.existsByPhoneNumberAndIsActiveTrue(request.getPhoneNumber())) {
             throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 전화번호입니다.");
         }
 
-        EmailVerification verification = emailVerificationRepository
+        emailVerificationRepository
                 .findTopByEmailAndIsUsedTrueOrderByCreatedAtDesc(request.getEmail())
                 .orElseThrow(() -> new CustomException(HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다"));
 
@@ -81,17 +81,28 @@ public class MemberService {
                 .findTopByPhoneNumberAndIsUsedTrueOrderByCreatedAtDesc(request.getPhoneNumber())
                 .orElseThrow(() -> new CustomException(HttpStatus.BAD_REQUEST, "전화번호 인증이 필요합니다."));
 
-        Member member = Member.builder()
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .nickname(request.getNickname())
-                .department(request.getDepartment())
-                .phoneNumber(request.getPhoneNumber())
-                .build();
-        memberRepository.save(member);
-
-        member.verify();
-        member.addPoints(50);
+        Member member = memberRepository.findByEmail(request.getEmail())
+                .map(existing -> {                    // 과거 가입 이력이 존재할 때
+                    existing.reactivate(
+                            passwordEncoder.encode(request.getPassword()),
+                            request.getNickname(),
+                            request.getDepartment(),
+                            request.getPhoneNumber()
+                    );
+                    return existing;
+                })
+                .orElseGet(() -> {
+                    Member newMember = memberRepository.save(Member.builder()
+                            .email(request.getEmail())          // 신규 가입일 때
+                            .password(passwordEncoder.encode(request.getPassword()))
+                            .nickname(request.getNickname())
+                            .department(request.getDepartment())
+                            .phoneNumber(request.getPhoneNumber())
+                            .build());
+                    newMember.verify();
+                    newMember.addPoints(50);
+                    return newMember;
+                });
 
         return SignupResponse.builder()
                 .accessToken(jwtUtil.generateToken(member.getEmail()))
@@ -214,7 +225,7 @@ public class MemberService {
         // 인증코드 확인 (기존 PhoneVerificationService 재활용)
         phoneVerificationService.verifyCode(request.getPhoneNumber(), request.getVerificationCode());
 
-        if (memberRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+        if (memberRepository.existsByPhoneNumberAndIsActiveTrue(request.getPhoneNumber())) {
             throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 전화번호입니다.");
         }
 
