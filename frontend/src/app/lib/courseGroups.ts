@@ -70,7 +70,11 @@ const formatTimeSummary = (slots: TimetableSlot[]) => {
   }
 
   return slots
-    .map((slot) => `${slot.day} ${formatPeriodRange(slot.startPeriod, slot.endPeriod)}`)
+    .map((slot) =>
+      slot.day === '웹강의'
+        ? slot.location ?? '셀0(웹강의)'
+        : `${slot.day} ${formatPeriodRange(slot.startPeriod, slot.endPeriod)}`
+    )
     .join(' · ');
 };
 
