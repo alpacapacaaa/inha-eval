@@ -26,7 +26,7 @@ public class CourseService {
 
     // 강의 상세 상세 조회
     public CourseResponse getCourseById(Long id) {
-        Course course = courseRepository.findById(id)
+        Course course = courseRepository.findByIdWithSlots(id)
                 .orElseThrow(() -> new IllegalArgumentException("요청하신 강의를 찾을 수 없습니다."));
         return CourseResponse.from(course);
     }
