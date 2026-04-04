@@ -53,7 +53,9 @@ export function HomePage() {
         setUser(userData);
 
         const recent = allCourses.slice(0, 3);
-        const coursesWithReviews = await Promise.all(
+        setRecentCourses(recent);
+
+        void Promise.all(
           recent.map(async (course) => {
             try {
               const reviews = await reviewService.getReviewsByCourseId(course.id);
@@ -64,17 +66,28 @@ export function HomePage() {
               return { ...course };
             }
           }),
-        );
-        setRecentCourses(coursesWithReviews);
+        ).then((coursesWithReviews) => {
+          setRecentCourses(coursesWithReviews);
+        });
 
-        try {
-          setHoneyGECourses(await courseService.getHoneyGE());
-        } catch (honeyError) {
-          console.error('Failed to fetch honey GE courses', honeyError);
+        const [honeyResult, majorResult] = await Promise.allSettled([
+          courseService.getHoneyGE(),
+          courseService.getMajorRecommended(userData?.department || '컴퓨터공학과'),
+        ]);
+
+        if (honeyResult.status === 'fulfilled') {
+          setHoneyGECourses(honeyResult.value);
+        } else {
+          console.error('Failed to fetch honey GE courses', honeyResult.reason);
           setHoneyGECourses([]);
         }
 
-        setMajorCourses(await courseService.getMajorRecommended(userData?.department || '컴퓨터공학과'));
+        if (majorResult.status === 'fulfilled') {
+          setMajorCourses(majorResult.value);
+        } else {
+          console.error('Failed to fetch major courses', majorResult.reason);
+          setMajorCourses([]);
+        }
       } catch (error) {
         console.error('Failed to fetch data', error);
       } finally {
