@@ -19,6 +19,9 @@ const CourseDetailPage = lazy(() =>
 const ReviewWritePage = lazy(() =>
   import('./pages/ReviewWritePage').then((module) => ({ default: module.ReviewWritePage })),
 );
+const ReviewWriteConceptPreviewPage = lazy(() =>
+  import('./pages/ReviewWriteConceptPreviewPage').then((module) => ({ default: module.ReviewWriteConceptPreviewPage })),
+);
 const MyPage = lazy(() =>
   import('./pages/MyPage').then((module) => ({ default: module.MyPage })),
 );
@@ -50,7 +53,7 @@ function RouteLoadingFallback() {
 }
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => userService.hasStoredSession());
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -86,17 +89,6 @@ export default function App() {
     setIsLoggedIn(false);
   };
 
-  if (isLoggedIn === null) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-transparent">
-        <div className="flex items-center gap-3 rounded-full border border-[#005bac]/10 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-600 shadow-[0_16px_40px_rgba(0,91,172,0.08)] backdrop-blur">
-          <Loader2 className="h-5 w-5 animate-spin text-[#1084e8]" />
-          서비스를 불러오는 중입니다
-        </div>
-      </div>
-    );
-  }
-
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-transparent text-foreground">
@@ -113,6 +105,14 @@ export default function App() {
               element={
                 <RouteErrorBoundary>
                   <ReviewWritePage />
+                </RouteErrorBoundary>
+              }
+            />
+            <Route
+              path="/review/write/:courseId/concepts"
+              element={
+                <RouteErrorBoundary>
+                  <ReviewWriteConceptPreviewPage />
                 </RouteErrorBoundary>
               }
             />

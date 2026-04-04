@@ -5,6 +5,15 @@ export interface CourseSlot {
   location?: string | null;
 }
 
+export interface StructuredReviewSurvey {
+  answers?: Record<string, number>;
+  teamProject?: boolean;
+  lab?: boolean;
+  quiz?: boolean;
+  prerequisiteDetails?: string;
+  otherExamTypeDescription?: string;
+}
+
 export interface Course {
   id: string;
   name: string;
@@ -58,6 +67,7 @@ export interface Review {
   studyResources?: string[];
   problemStyles?: string[];
   examPrepTip?: string;
+  structuredSurvey?: StructuredReviewSurvey;
   recommendFor?: string[];
   notRecommendFor?: string[];
 
@@ -99,6 +109,7 @@ export interface CreateReviewInput {
   studyResources?: string[];
   problemStyles?: string[];
   examPrepTip?: string;
+  structuredSurvey?: StructuredReviewSurvey;
   recommendFor?: string[];
   notRecommendFor?: string[];
   diffScore?: number;

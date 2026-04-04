@@ -16,10 +16,9 @@ public class Member {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String email;
 
-    @Column(unique=true)
     private String phoneNumber;
 
     @Column(nullable = false)
@@ -82,5 +81,15 @@ public class Member {
     public void updateDepartment(String department) { this.department = department; }
     public void updatePhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
 
-
+    public void reactivate(String password, String nickname, String department, String phoneNumber) {
+        this.password = password;
+        this.nickname = nickname;
+        this.department = department;
+        this.phoneNumber = phoneNumber;
+        this.isActive = true;
+        this.isVerified = true;
+        this.points = 50;
+        this.passExpiryDate = null;
+        this.role = Role.USER;
+    }
 }

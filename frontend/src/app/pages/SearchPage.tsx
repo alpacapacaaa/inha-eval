@@ -683,6 +683,10 @@ export function SearchPage() {
 
   useEffect(() => {
     const fetchAllCourses = async () => {
+      if (cartIds.length === 0 && !isCartPanelOpen) {
+        return;
+      }
+
       try {
         const results = await courseService.getAllCourses();
         setAllCourses(results);
@@ -692,7 +696,7 @@ export function SearchPage() {
     };
 
     fetchAllCourses();
-  }, []);
+  }, [cartIds.length, isCartPanelOpen]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -709,6 +713,8 @@ export function SearchPage() {
   }, []);
 
   useEffect(() => {
+    let isStale = false;
+
     const fetchCourses = async () => {
       setIsLoading(true);
       try {
@@ -762,15 +768,25 @@ export function SearchPage() {
           }
         }
 
-        setCourses(results);
+        if (!isStale) {
+          setCourses(results);
+        }
       } catch (error) {
-        console.error('Failed to search courses', error);
+        if (!isStale) {
+          console.error('Failed to search courses', error);
+        }
       } finally {
-        setIsLoading(false);
+        if (!isStale) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchCourses();
+
+    return () => {
+      isStale = true;
+    };
   }, [query, selectedDepartment, selectedCategory, selectedTypes, selectedMajorType, selectedTheme]);
 
   const professorGroups = useMemo(

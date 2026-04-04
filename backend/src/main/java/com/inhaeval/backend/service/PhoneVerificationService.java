@@ -27,7 +27,7 @@ public class PhoneVerificationService {
     // 회원가입용 - 중복 체크 포함
     @Transactional
     public void sendCodeForSignup(String phoneNumber) {
-        if (memberRepository.existsByPhoneNumber(phoneNumber)) {
+        if (memberRepository.existsByPhoneNumberAndIsActiveTrue(phoneNumber)) {
             throw new CustomException(HttpStatus.CONFLICT, "이미 사용 중인 전화번호입니다.");
         }
         sendCode(phoneNumber);

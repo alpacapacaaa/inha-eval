@@ -1,4 +1,4 @@
-import { Course, CourseSlot, Review, User, PointHistory, Inquiry, Notice, CreateReviewInput } from '../types/types';
+import { Course, CourseSlot, Review, User, PointHistory, Inquiry, Notice, CreateReviewInput, StructuredReviewSurvey } from '../types/types';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:8080';
 const PRODUCTION_API_BASE_URL = 'https://api.inha-eval.com';
@@ -189,17 +189,19 @@ const parseStructuredExamInfo = (examInfo?: string) => {
       scopePredictability?: string;
       studyResources?: string[];
       examPrepTip?: string;
+      structuredSurvey?: StructuredReviewSurvey;
     };
   } catch {
     return null;
   }
 };
 
-const encodeStructuredExamInfo = (review: Pick<CreateReviewInput, 'pastExamHelpfulness' | 'scopePredictability' | 'studyResources' | 'examPrepTip'>) => {
+const encodeStructuredExamInfo = (review: Pick<CreateReviewInput, 'pastExamHelpfulness' | 'scopePredictability' | 'studyResources' | 'examPrepTip' | 'structuredSurvey'>) => {
   const hasStructuredInfo = Boolean(review.pastExamHelpfulness) ||
     Boolean(review.scopePredictability) ||
     (review.studyResources?.length ?? 0) > 0 ||
-    Boolean(review.examPrepTip?.trim());
+    Boolean(review.examPrepTip?.trim()) ||
+    Boolean(review.structuredSurvey && Object.keys(review.structuredSurvey).length > 0);
 
   if (!hasStructuredInfo) {
     return undefined;
@@ -210,6 +212,7 @@ const encodeStructuredExamInfo = (review: Pick<CreateReviewInput, 'pastExamHelpf
     scopePredictability: review.scopePredictability,
     studyResources: review.studyResources ?? [],
     examPrepTip: review.examPrepTip?.trim() || '',
+    structuredSurvey: review.structuredSurvey,
   })}`;
 };
 
@@ -267,6 +270,7 @@ const mapReviewResponse = (review: ReviewResponseDto): Review => {
     scopePredictability: structuredExamInfo?.scopePredictability,
     studyResources: structuredExamInfo?.studyResources ?? review.examKeywords ?? [],
     examPrepTip: structuredExamInfo?.examPrepTip ?? review.oneLineTip,
+    structuredSurvey: structuredExamInfo?.structuredSurvey,
     recommendFor: review.recommendFor ?? [],
     notRecommendFor: review.notRecommendFor ?? [],
     diffScore: review.diffScore,
@@ -378,14 +382,42 @@ const requireCurrentUser = (): User => {
   return currentUser;
 };
 
+const clearCourseCaches = () => {
+  cachedAllCourses = null;
+  cachedAllCoursesRequest = null;
+  cachedDepartments = null;
+};
+
 let currentUser: User | null = null;
+let currentUserRequest: Promise<User | null> | null = null;
 let pointHistory: PointHistory[] = [];
+let cachedAllCourses: Course[] | null = null;
+let cachedAllCoursesRequest: Promise<Course[]> | null = null;
 let cachedDepartments: string[] | null = null;
 
 export const courseService = {
   getAllCourses: async (): Promise<Course[]> => {
-    const results = await apiRequest<CourseResponseDto[]>('/api/courses');
-    return results.map(mapCourseResponse);
+    if (cachedAllCourses) {
+      return cachedAllCourses;
+    }
+
+    if (cachedAllCoursesRequest) {
+      return cachedAllCoursesRequest;
+    }
+
+    cachedAllCoursesRequest = apiRequest<CourseResponseDto[]>('/api/courses')
+      .then((results) => {
+        const mappedCourses = results.map(mapCourseResponse);
+        cachedAllCourses = mappedCourses;
+        cachedDepartments = [...new Set(mappedCourses.map((course) => course.department).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, 'ko'));
+        return mappedCourses;
+      })
+      .finally(() => {
+        cachedAllCoursesRequest = null;
+      });
+
+    return cachedAllCoursesRequest;
   },
 
   getDepartments: async (): Promise<string[]> => {
@@ -400,6 +432,13 @@ export const courseService = {
   },
 
   getCourseById: async (id: string): Promise<Course | undefined> => {
+    if (cachedAllCourses) {
+      const cachedCourse = cachedAllCourses.find((course) => course.id === id);
+      if (cachedCourse) {
+        return cachedCourse;
+      }
+    }
+
     const result = await apiRequest<CourseResponseDto>(`/api/courses/${id}`);
     return mapCourseResponse(result);
   },
@@ -436,10 +475,10 @@ export const courseService = {
   },
 
   getMajorRecommended: async (department: string): Promise<Course[]> => {
-    const courses = await courseService.getFamousCourses().catch(() => courseService.getAllCourses());
+    const courses = await courseService.getAllCourses();
     return courses
       .filter((c) => c.department === department && c.category === '전공')
-      .sort((a, b) => b.rating - a.rating)
+      .sort((a, b) => (b.reviewCount - a.reviewCount) || (b.rating - a.rating))
       .slice(0, 3);
   },
 };
@@ -490,6 +529,8 @@ export const reviewService = {
       }),
     });
 
+    clearCourseCaches();
+
     return {
       ...review,
       id: String(reviewId),
@@ -504,6 +545,7 @@ export const reviewService = {
     await apiRequest<void>(`/api/reviews/${reviewId}`, {
       method: 'DELETE',
     });
+    clearCourseCaches();
   },
 
   likeReview: async (reviewId: string): Promise<void> => {
@@ -516,15 +558,37 @@ export const reviewService = {
 export const userService = {
   supportsNotices: false,
   supportsInquiries: false,
+  hasStoredSession: (): boolean => Boolean(getStoredAuthToken() || loadStoredUser()),
 
   getCurrentUser: async (): Promise<User | null> => {
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!token) return null;
+    if (!token) {
+      currentUser = null;
+      return null;
+    }
+    if (currentUser) return currentUser;
+
+    if (currentUserRequest) {
+      return currentUserRequest;
+    }
+
     try {
-      const result = await apiRequest<UserResponseDto>('/api/users/me');
-      currentUser = mapUserResponse(result);
-      saveAuthSession(token, currentUser);
-      return currentUser;
+      currentUserRequest = apiRequest<UserResponseDto>('/api/users/me')
+        .then((result) => {
+          currentUser = mapUserResponse(result);
+          saveAuthSession(token, currentUser);
+          return currentUser;
+        })
+        .catch(() => {
+          clearAuthSession();
+          currentUser = null;
+          return null;
+        })
+        .finally(() => {
+          currentUserRequest = null;
+        });
+
+      return currentUserRequest;
     } catch {
       clearAuthSession();
       currentUser = null;
