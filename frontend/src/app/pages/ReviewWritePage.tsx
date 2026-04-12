@@ -852,24 +852,11 @@ export function ReviewWritePage() {
     }
 
     const diffScore = getSectionAverage(difficultyQuestions);
-    const teachingScore = getSectionAverage(lectureQuestions);
     const gradScore = getSectionAverage(gradingQuestions);
     const workScore = getSectionAverage(assignmentQuestions);
     const depthScore = getSectionAverage(depthQuestions);
     const examStyleScore = getSectionAverage(examStyleQuestions);
-    const teamScore = teamProject === 'yes' ? getSectionAverage(teamQuestions) : 1;
-    const labScore = labIncluded === 'yes' ? getSectionAverage(labQuestions) : 1;
-    const quizScore = quizIncluded === 'yes' ? getSectionAverage(quizQuestions) : 1;
     const examInfoScore = getSectionAverage(examInfoQuestions);
-
-    const timeInvestScore = Math.round(
-      average(
-        [diffScore, workScore, prerequisiteScore]
-          .concat(teamProject === 'yes' ? [teamScore] : [])
-          .concat(labIncluded === 'yes' ? [labScore] : [])
-          .concat(quizIncluded === 'yes' ? [quizScore] : []),
-      ),
-    );
 
     const payload: CreateReviewInput = {
       courseId,
@@ -882,13 +869,10 @@ export function ReviewWritePage() {
       content: content.trim(),
       isAnonymous: true,
       diffScore,
-      teachingScore,
       gradScore,
       workScore,
       prerequisiteScore,
       depthScore,
-      timeInvestScore: clamp(timeInvestScore, 1, 5),
-      attScore: 3,
       pastExamScore: clamp(Math.round(average([examStyleScore, examInfoScore])), 1, 5),
       assignmentType,
       textbook: buildTextbookSummary(),

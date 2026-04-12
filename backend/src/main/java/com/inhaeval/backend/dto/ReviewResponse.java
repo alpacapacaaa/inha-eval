@@ -50,15 +50,12 @@ public class ReviewResponse {
     private List<String> problemStyles;
     private String examPrepTip;
 
-    // 육각형 스탯
+    // 슬라이더 스탯
     private Integer diffScore;
-    private Integer teachingScore;
     private Integer gradScore;
     private Integer workScore;
     private Integer prerequisiteScore;
     private Integer depthScore;
-    private Integer timeInvestScore;
-    private Integer attScore;
     private Integer pastExamScore;
 
     // Review 엔티티 → ReviewResponse 변환 메서드
@@ -97,13 +94,10 @@ public class ReviewResponse {
                 .problemStyles(review.getProblemStyles())
                 .examPrepTip(review.getExamPrepTip())
                 .diffScore(review.getDiffScore())
-                .teachingScore(review.getTeachingScore())
                 .gradScore(review.getGradScore())
                 .workScore(review.getWorkScore())
                 .prerequisiteScore(review.getPrerequisiteScore())
                 .depthScore(review.getDepthScore())
-                .timeInvestScore(review.getTimeInvestScore())
-                .attScore(review.getAttScore())
                 .pastExamScore(review.getPastExamScore())
                 .build();
     }

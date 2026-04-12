@@ -110,13 +110,10 @@ interface ReviewResponseDto {
   recommendFor?: string[];
   notRecommendFor?: string[];
   diffScore?: number;
-  teachingScore?: number;
   gradScore?: number;
   workScore?: number;
   prerequisiteScore?: number;
   depthScore?: number;
-  timeInvestScore?: number;
-  attScore?: number;
   pastExamScore?: number;
 }
 
@@ -274,13 +271,10 @@ const mapReviewResponse = (review: ReviewResponseDto): Review => {
     recommendFor: review.recommendFor ?? [],
     notRecommendFor: review.notRecommendFor ?? [],
     diffScore: review.diffScore,
-    teachingScore: review.teachingScore,
     gradScore: review.gradScore,
     workScore: review.workScore,
     prerequisiteScore: review.prerequisiteScore,
     depthScore: review.depthScore,
-    timeInvestScore: review.timeInvestScore,
-    attScore: review.attScore,
     pastExamScore: review.pastExamScore,
   };
 };
@@ -518,13 +512,10 @@ export const reviewService = {
         recommendFor: review.recommendFor ?? [],
         notRecommendFor: review.notRecommendFor ?? [],
         diffScore: review.diffScore,
-        teachingScore: review.teachingScore,
         gradScore: review.gradScore,
         workScore: review.workScore,
         prerequisiteScore: review.prerequisiteScore,
         depthScore: review.depthScore,
-        timeInvestScore: review.timeInvestScore,
-        attScore: review.attScore,
         pastExamScore: review.pastExamScore,
       }),
     });
