@@ -40,14 +40,11 @@ public class ReviewRequest {
     private List<String> problemStyles;
     private String examPrepTip;
 
-    // 육각형 스탯 정보
+    // 슬라이더 스탯 정보
     private Integer diffScore;
-    private Integer teachingScore;
     private Integer gradScore;
     private Integer workScore;
     private Integer prerequisiteScore;
     private Integer depthScore;
-    private Integer timeInvestScore;
-    private Integer attScore;
     private Integer pastExamScore;
 }

@@ -90,15 +90,12 @@ public class Review {
     @Column(name = "not_recommend")
     private java.util.List<String> notRecommendFor;
 
-    // --- Hexagon numerical stats (1-5점 육각형 스탯) ---
+    // --- Slider bar stats (1-5점 슬라이더 스탯) ---
     private Integer diffScore;
-    private Integer teachingScore;
     private Integer gradScore;
     private Integer workScore;
     private Integer prerequisiteScore;
     private Integer depthScore;
-    private Integer timeInvestScore;
-    private Integer attScore;
     private Integer pastExamScore;
 
     @ElementCollection

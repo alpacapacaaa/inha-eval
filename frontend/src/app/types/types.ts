@@ -71,15 +71,12 @@ export interface Review {
   recommendFor?: string[];
   notRecommendFor?: string[];
 
-  // Hexagon numerical stats (1-5)
+  // Slider bar stats (1-5)
   diffScore?: number;
-  teachingScore?: number;
   gradScore?: number;
   workScore?: number;
   prerequisiteScore?: number;
   depthScore?: number;
-  timeInvestScore?: number;
-  attScore?: number;
   pastExamScore?: number;
 }
 
@@ -113,13 +110,10 @@ export interface CreateReviewInput {
   recommendFor?: string[];
   notRecommendFor?: string[];
   diffScore?: number;
-  teachingScore?: number;
   gradScore?: number;
   workScore?: number;
   prerequisiteScore?: number;
   depthScore?: number;
-  timeInvestScore?: number;
-  attScore?: number;
   pastExamScore?: number;
 }
 

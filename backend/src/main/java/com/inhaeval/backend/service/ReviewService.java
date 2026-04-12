@@ -61,15 +61,12 @@ public class ReviewService {
                 .studyResources(request.getStudyResources())
                 .problemStyles(request.getProblemStyles())
                 .examPrepTip(request.getExamPrepTip())
-                // --- 육각형 스탯 정보 매핑 ---
+                // --- 슬라이더 스탯 정보 매핑 ---
                 .diffScore(request.getDiffScore())
-                .teachingScore(request.getTeachingScore())
                 .gradScore(request.getGradScore())
                 .workScore(request.getWorkScore())
                 .prerequisiteScore(request.getPrerequisiteScore())
                 .depthScore(request.getDepthScore())
-                .timeInvestScore(request.getTimeInvestScore())
-                .attScore(request.getAttScore())
                 .pastExamScore(request.getPastExamScore())
                 .build();
 
