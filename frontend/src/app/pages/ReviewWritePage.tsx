@@ -78,11 +78,6 @@ const difficultyQuestions: QuestionConfig[] = [
   { id: 'difficulty_4', prompt: '중간고사와 기말고사의 난이도 차이가 큰 편이다.' },
 ];
 
-const lectureQuestions: QuestionConfig[] = [
-  { id: 'lecture_1', prompt: '교수님의 강의력은 전반적으로 좋은 편이다.' },
-  { id: 'lecture_2', prompt: '판서/PPT/예시가 이해에 실제로 도움이 된다.' },
-  { id: 'lecture_3', prompt: '녹화 강의가 제공되어 학습에 도움이 된다.' },
-];
 
 const gradingQuestions: QuestionConfig[] = [
   { id: 'grading_1', prompt: '노력한 만큼 점수가 잘 반영되는 편이다.' },
@@ -155,18 +150,8 @@ const surveySections: SectionConfig[] = [
     questions: difficultyQuestions,
   },
   {
-    id: 'lecture',
-    number: '2',
-    emoji: '🟣',
-    title: '강의력',
-    accentClass: 'text-[#7b4dd7]',
-    softClass: 'bg-[#f3ecff]',
-    borderClass: 'border-[#e5d7fb]',
-    questions: lectureQuestions,
-  },
-  {
     id: 'grading',
-    number: '3',
+    number: '2',
     emoji: '🟡',
     title: '학점 비율',
     accentClass: 'text-[#b8860b]',
@@ -176,7 +161,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'assignment',
-    number: '4',
+    number: '3',
     emoji: '🔴',
     title: '과제량',
     accentClass: 'text-[#cb4a3e]',
@@ -186,7 +171,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'prerequisite',
-    number: '5',
+    number: '4',
     emoji: '🟠',
     title: '선수지식 필요도',
     accentClass: 'text-[#da6f1a]',
@@ -196,7 +181,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'depth',
-    number: '6',
+    number: '5',
     emoji: '🟤',
     title: '전공 심화도',
     accentClass: 'text-[#7c5a3f]',
@@ -206,7 +191,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'examStyle',
-    number: '7',
+    number: '6',
     emoji: '🧾',
     title: '시험 방식',
     accentClass: 'text-[#465aaf]',
@@ -216,7 +201,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'team',
-    number: '8',
+    number: '7',
     emoji: '⚪',
     title: '팀플 / 발표',
     accentClass: 'text-[#5d6677]',
@@ -226,7 +211,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'lab',
-    number: '9',
+    number: '8',
     emoji: '🟢',
     title: '실습',
     accentClass: 'text-[#1c8e58]',
@@ -236,7 +221,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'quiz',
-    number: '10',
+    number: '9',
     emoji: '🔵',
     title: '퀴즈',
     accentClass: 'text-[#0f76bc]',
@@ -246,7 +231,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'textbook',
-    number: '11',
+    number: '10',
     emoji: '🟣',
     title: '교재 사용도',
     accentClass: 'text-[#9455cd]',
@@ -256,7 +241,7 @@ const surveySections: SectionConfig[] = [
   },
   {
     id: 'examInfo',
-    number: '12',
+    number: '11',
     emoji: '🟡',
     title: '시험 정보',
     accentClass: 'text-[#ae8512]',
@@ -562,7 +547,6 @@ export function ReviewWritePage() {
 
   const visibleQuestions = [
     ...difficultyQuestions,
-    ...lectureQuestions,
     ...gradingQuestions,
     ...assignmentQuestions,
     ...prerequisiteQuestions,
