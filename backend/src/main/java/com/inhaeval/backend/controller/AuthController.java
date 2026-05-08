@@ -79,4 +79,10 @@ public class AuthController {
         memberService.resetPassword(request);
         return ResponseEntity.ok().build();
     }
+
+    // Access Token 갱신
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return ResponseEntity.ok(memberService.refreshAccessToken(request.getRefreshToken()));
+    }
 }
