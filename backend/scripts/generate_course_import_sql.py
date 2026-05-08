@@ -13,6 +13,38 @@ from pathlib import Path
 from typing import Iterable
 
 
+GED_AREA_MAP = {
+    '1': '핵심교양-1.인간, 가치, 공존',
+    '2': '핵심교양-2.역사, 사상, 문화',
+    '3': '핵심교양-3.문학, 예술, 상징',
+    '4': '핵심교양-4.사회, 제도, 세계',
+    '5': '핵심교양-5.자연, 생명, 환경',
+    '6': '핵심교양-6.수리, 정보, 기술',
+}
+
+GEE_AREA_MAP = {
+    '1': '일반교양-1.인문 · 예술',
+    '2': '일반교양-2. 사회 · 자연',
+    '3': '일반교양-3.소통 · 실천',
+    '4': '일반교양-4.창의 · 도전',
+    '5': '일반교양-5.실용 · 진로',
+    '6': '일반교양-6.생활 · 건강',
+    '7': '일반교양-7.SW·AI',
+}
+
+
+def map_general_area(course_id: str) -> str:
+    prefix = course_id.split('-')[0]
+    if len(prefix) >= 4:
+        code_type = prefix[:3]
+        area_num = prefix[3]
+        if code_type == 'GED':
+            return GED_AREA_MAP.get(area_num, '')
+        if code_type == 'GEE':
+            return GEE_AREA_MAP.get(area_num, '')
+    return ''
+
+
 @dataclass(frozen=True)
 class CourseRow:
     name: str
@@ -23,6 +55,8 @@ class CourseRow:
     credits: int
     section: str
     semester: str
+    general_area: str = ''
+    evaluation_type: str = ''
     rating: float = 0.0
     review_count: int = 0
 
@@ -108,6 +142,7 @@ def parse_time_location(time_location: str, course_index: int) -> list[CourseSlo
 
 
 def map_row(item: dict, semester: str) -> CourseRow:
+    course_id = (item.get("id") or "").strip()
     return CourseRow(
         name=(item.get("name") or "").strip(),
         professor=(item.get("professor") or "").strip(),
@@ -115,8 +150,10 @@ def map_row(item: dict, semester: str) -> CourseRow:
         category=normalize_category(item.get("type") or ""),
         type=(item.get("type") or "").strip(),
         credits=normalize_credits(item.get("credit") or "0"),
-        section=normalize_section(item.get("id") or ""),
+        section=normalize_section(course_id),
         semester=semester,
+        general_area=map_general_area(course_id),
+        evaluation_type=(item.get("evaluation_type") or "").strip(),
     )
 
 
@@ -138,6 +175,8 @@ def sql_escape(value: str) -> str:
 
 
 def row_to_sql_tuple(row: CourseRow) -> str:
+    general_area_val = f"'{sql_escape(row.general_area)}'" if row.general_area else "NULL"
+    evaluation_type_val = f"'{sql_escape(row.evaluation_type)}'" if row.evaluation_type else "NULL"
     return (
         f"('{sql_escape(row.name)}', "
         f"'{sql_escape(row.professor)}', "
@@ -147,6 +186,8 @@ def row_to_sql_tuple(row: CourseRow) -> str:
         f"{row.credits}, "
         f"'{sql_escape(row.section)}', "
         f"'{sql_escape(row.semester)}', "
+        f"{general_area_val}, "
+        f"{evaluation_type_val}, "
         f"{row.rating:.1f}, "
         f"{row.review_count})"
     )
@@ -173,7 +214,7 @@ def build_sql(rows: list[CourseRow], slots_by_index: dict[int, list[CourseSlotRo
         values = ",\n  ".join(row_to_sql_tuple(row) for row in batch)
         lines.append(
             "INSERT INTO courses "
-            "(name, professor, department, category, type, credits, section, semester, rating, review_count)\n"
+            "(name, professor, department, category, type, credits, section, semester, general_area, evaluation_type, rating, review_count)\n"
             "VALUES\n"
             f"  {values};"
         )
