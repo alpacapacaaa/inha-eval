@@ -24,6 +24,8 @@ public class CourseResponse {
     private int reviewCount;
     private String category;
     private String type;
+    private String generalArea;
+    private String evaluationType;
 
     // 프론트엔드 UI 깨짐 방지용 기본값
     @Builder.Default private String difficulty = "medium";
@@ -44,6 +46,8 @@ public class CourseResponse {
                 .reviewCount(course.getReviewCount())
                 .category(course.getCategory())
                 .type(course.getType())
+                .generalArea(course.getGeneralArea())
+                .evaluationType(course.getEvaluationType())
                 .slots(course.getSlots().stream()
                         .map(CourseSlotResponse::from)
                         .collect(Collectors.toList()))
