@@ -1,8 +1,19 @@
 import { Course } from '../../types/models';
 import { apiRequest } from './client';
 
-export function getAllCourses() {
-  return apiRequest<Course[]>('/api/courses');
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30분
+
+let coursesCache: Course[] | null = null;
+let cacheTimestamp: number | null = null;
+
+export async function getAllCourses(): Promise<Course[]> {
+  if (coursesCache && cacheTimestamp && Date.now() - cacheTimestamp < CACHE_TTL_MS) {
+    return coursesCache;
+  }
+  const data = await apiRequest<Course[]>('/api/courses');
+  coursesCache = data;
+  cacheTimestamp = Date.now();
+  return data;
 }
 
 export function searchCourses(query: string, department?: string) {
