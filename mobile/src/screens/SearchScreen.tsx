@@ -14,7 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoursePosterCard } from '../components/CoursePosterCard';
 import { useAuth } from '../contexts/AuthContext';
-import { getAllCourses, searchCourses } from '../lib/api/courses';
+import { getAllCourses } from '../lib/api/courses';
 import { AppNavigation } from '../navigation/AppNavigator';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -87,14 +87,13 @@ export function SearchScreen({ navigation, route }: Props) {
   const [generalPf, setGeneralPf] = useState<'all' | 'pf' | 'grade'>('all');
   const [visibleCourseCount, setVisibleCourseCount] = useState(COURSE_PAGE_SIZE);
 
-  const loadCourses = async (keyword?: string) => {
+  const loadCourses = async () => {
     const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setErrorMessage('');
 
     try {
-      const normalizedKeyword = keyword?.trim() ?? '';
-      const data = normalizedKeyword ? await searchCourses(normalizedKeyword) : await getAllCourses();
+      const data = await getAllCourses();
 
       if (requestId !== requestIdRef.current) {
         return;
@@ -116,7 +115,7 @@ export function SearchScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     setQuery(route.initialQuery ?? '');
-    loadCourses(route.initialQuery);
+    loadCourses();
   }, [route.initialQuery]);
 
   useEffect(() => {
@@ -126,7 +125,16 @@ export function SearchScreen({ navigation, route }: Props) {
   }, [activePanel, navigation]);
 
   const filteredCourses = useMemo(() => {
+    const lowerQuery = trimmedQuery.toLowerCase();
+
     const filtered = courses.filter((course) => {
+      if (trimmedQuery) {
+        const matchesKeyword =
+          course.name.toLowerCase().includes(lowerQuery) ||
+          course.professor.toLowerCase().includes(lowerQuery);
+        if (!matchesKeyword) return false;
+      }
+
       const scope = getCourseScope(course, user?.department);
       if (category !== 'all' && scope !== category) {
         return false;
@@ -164,6 +172,7 @@ export function SearchScreen({ navigation, route }: Props) {
     majorCredit,
     majorType,
     sortBy,
+    trimmedQuery,
     user?.department,
   ]);
 
@@ -256,13 +265,13 @@ export function SearchScreen({ navigation, route }: Props) {
                   style={styles.searchInput}
                   value={query}
                   onChangeText={setQuery}
-                  onSubmitEditing={() => loadCourses(query)}
+                  onSubmitEditing={() => {}}
                 />
               </View>
               <Pressable
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.searchButton, pressed ? styles.controlPressed : null]}
-                onPress={() => loadCourses(query)}
+                onPress={() => {}}
               >
                 <Text style={styles.searchButtonText}>검색</Text>
               </Pressable>
