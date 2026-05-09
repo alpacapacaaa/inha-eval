@@ -41,6 +41,9 @@ public class Course {
 
     private String semester;    // 개설 학기 "26-1", "26-2"
 
+    private String generalArea;    // 교양 영역 (예: "핵심교양-1.인간, 가치, 공존"), 교양 과목에만 값 존재
+    private String evaluationType; // 평가 방식 (예: "Pass/Fail", "절대평가", "상대평가")
+
     // 반정규화 필드 (DB가 무거워지지 않게 평점과 개수를 미리 저장해둠)
     @Column(nullable = false)
     @Builder.Default

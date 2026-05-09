@@ -37,4 +37,10 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     @Query("SELECT c FROM Course c LEFT JOIN FETCH c.slots WHERE c.id = :id")
     Optional<Course> findByIdWithSlots(@Param("id") Long id);
+
+    @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.slots WHERE " +
+           "(:generalArea IS NULL OR c.generalArea = :generalArea) " +
+           "AND (:evaluationType IS NULL OR c.evaluationType = :evaluationType)")
+    List<Course> findByGeneralAreaFilter(@Param("generalArea") String generalArea,
+                                         @Param("evaluationType") String evaluationType);
 }

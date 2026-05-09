@@ -69,4 +69,13 @@ public class CourseService {
                 .map(CourseResponse::from)
                 .collect(Collectors.toList());
     }
+
+    // 6. 교양 영역 / 평가 방식 필터 조회
+    public List<CourseResponse> getCoursesByGeneralAreaFilter(String generalArea, String evaluationType) {
+        String normalizedArea = (generalArea == null || generalArea.isBlank()) ? null : generalArea;
+        String normalizedEvalType = (evaluationType == null || evaluationType.isBlank()) ? null : evaluationType;
+        return courseRepository.findByGeneralAreaFilter(normalizedArea, normalizedEvalType).stream()
+                .map(CourseResponse::from)
+                .collect(Collectors.toList());
+    }
 }

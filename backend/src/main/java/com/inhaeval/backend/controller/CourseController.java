@@ -49,4 +49,11 @@ public class CourseController {
     public ResponseEntity<List<CourseResponse>> getGrowthCourses() {
         return ResponseEntity.ok(courseService.getGrowthCourses());
     }
+
+    @GetMapping("/filter")
+    public ResponseEntity<List<CourseResponse>> filterCourses(
+            @RequestParam(name = "generalArea", required = false) String generalArea,
+            @RequestParam(name = "evaluationType", required = false) String evaluationType) {
+        return ResponseEntity.ok(courseService.getCoursesByGeneralAreaFilter(generalArea, evaluationType));
+    }
 }
