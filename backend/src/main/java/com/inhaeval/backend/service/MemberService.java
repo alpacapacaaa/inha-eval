@@ -3,13 +3,16 @@ package com.inhaeval.backend.service;
 import com.inhaeval.backend.domain.EmailVerification;
 import com.inhaeval.backend.domain.Member;
 import com.inhaeval.backend.domain.PhoneVerification;
+import com.inhaeval.backend.domain.RefreshToken;
 import com.inhaeval.backend.dto.*;
 import com.inhaeval.backend.exception.CustomException;
 import com.inhaeval.backend.repository.EmailVerificationRepository;
 import com.inhaeval.backend.repository.MemberRepository;
 import com.inhaeval.backend.repository.PhoneVerificationRepository;
+import com.inhaeval.backend.repository.RefreshTokenRepository;
 import com.inhaeval.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,8 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.inhaeval.backend.domain.PointHistory;
 import com.inhaeval.backend.repository.PointHistoryRepository;
 
-import java.util.UUID;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +35,10 @@ public class MemberService {
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
     private final JwtUtil jwtUtil;
+    private final RefreshTokenRepository refreshTokenRepository;
+
+    @Value("${jwt.refresh-expiration}")
+    private long refreshExpiration;
 
     // 이메일 인증 메일 발송
     @Transactional
@@ -112,7 +119,7 @@ public class MemberService {
 
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
 
         Member member = memberRepository.findByEmail(request.getEmail())
@@ -130,12 +137,57 @@ public class MemberService {
             throw new CustomException(HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다.");
         }
 
-        String token = jwtUtil.generateToken(member.getEmail());
+        String accessToken = jwtUtil.generateToken(member.getEmail());
+        String refreshTokenValue = UUID.randomUUID().toString();
+
+        refreshTokenRepository.deleteByEmail(member.getEmail());
+        refreshTokenRepository.save(RefreshToken.builder()
+                .email(member.getEmail())
+                .token(refreshTokenValue)
+                .expiresAt(LocalDateTime.now().plusSeconds(refreshExpiration / 1000))
+                .build());
 
         return LoginResponse.builder()
-                .points(member.getPoints())
+                .accessToken(accessToken)
+                .refreshToken(refreshTokenValue)
                 .nickname(member.getNickname())
-                .accessToken(token)
+                .points(member.getPoints())
+                .build();
+    }
+
+    @Transactional
+    public LoginResponse refreshAccessToken(String token) {
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(token)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."));
+
+        if (refreshToken.isExpired()) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new CustomException(HttpStatus.UNAUTHORIZED, "만료된 Refresh Token입니다. 다시 로그인해주세요.");
+        }
+
+        Member member = memberRepository.findByEmail(refreshToken.getEmail())
+                .orElseThrow(() -> new CustomException(HttpStatus.NOT_FOUND, "존재하지 않는 회원입니다."));
+
+        if (!member.isActive()) {
+            throw new CustomException(HttpStatus.FORBIDDEN, "탈퇴한 회원입니다.");
+        }
+
+        String newAccessToken = jwtUtil.generateToken(member.getEmail());
+        String newRefreshToken = UUID.randomUUID().toString();
+
+        // 보안을 위해 기존 토큰 폐기 후 새 토큰 발급 (Refresh Token Rotation)
+        refreshTokenRepository.delete(refreshToken);
+        refreshTokenRepository.save(RefreshToken.builder()
+                .email(member.getEmail())
+                .token(newRefreshToken)
+                .expiresAt(LocalDateTime.now().plusSeconds(refreshExpiration / 1000))
+                .build());
+
+        return LoginResponse.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken)
+                .nickname(member.getNickname())
+                .points(member.getPoints())
                 .build();
     }
 
