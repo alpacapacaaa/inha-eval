@@ -1,6 +1,7 @@
 package com.inhaeval.backend.controller;
 
 import com.inhaeval.backend.dto.CourseResponse;
+import com.inhaeval.backend.dto.CourseStatsResponse;
 import com.inhaeval.backend.service.CourseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +49,11 @@ public class CourseController {
     @GetMapping("/growth") // 성장형 강의
     public ResponseEntity<List<CourseResponse>> getGrowthCourses() {
         return ResponseEntity.ok(courseService.getGrowthCourses());
+    }
+
+    @GetMapping("/{courseId}/stats")
+    public ResponseEntity<CourseStatsResponse> getCourseStats(@PathVariable Long courseId) {
+        return ResponseEntity.ok(courseService.getCourseStats(courseId));
     }
 
     @GetMapping("/filter")

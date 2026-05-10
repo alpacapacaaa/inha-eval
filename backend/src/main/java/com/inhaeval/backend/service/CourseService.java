@@ -2,6 +2,7 @@ package com.inhaeval.backend.service;
 
 import com.inhaeval.backend.domain.Course;
 import com.inhaeval.backend.dto.CourseResponse;
+import com.inhaeval.backend.dto.CourseStatsResponse;
 import com.inhaeval.backend.repository.CourseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -68,6 +69,29 @@ public class CourseService {
                 .limit(5)
                 .map(CourseResponse::from)
                 .collect(Collectors.toList());
+    }
+
+    // 7. 과목별 스탯 평균 조회
+    public CourseStatsResponse getCourseStats(Long courseId) {
+        courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("요청하신 강의를 찾을 수 없습니다."));
+
+        Object[] result = courseRepository.findStatsByCourseId(courseId);
+
+        return CourseStatsResponse.builder()
+                .diffScore((Double) result[0])
+                .diffScoreCount(((Long) result[1]).intValue())
+                .gradScore((Double) result[2])
+                .gradScoreCount(((Long) result[3]).intValue())
+                .workScore((Double) result[4])
+                .workScoreCount(((Long) result[5]).intValue())
+                .prerequisiteScore((Double) result[6])
+                .prerequisiteScoreCount(((Long) result[7]).intValue())
+                .depthScore((Double) result[8])
+                .depthScoreCount(((Long) result[9]).intValue())
+                .pastExamScore((Double) result[10])
+                .pastExamScoreCount(((Long) result[11]).intValue())
+                .build();
     }
 
     // 6. 교양 영역 / 평가 방식 필터 조회
