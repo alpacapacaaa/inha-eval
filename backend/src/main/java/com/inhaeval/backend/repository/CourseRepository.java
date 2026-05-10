@@ -43,4 +43,14 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
            "AND (:evaluationType IS NULL OR c.evaluationType = :evaluationType)")
     List<Course> findByGeneralAreaFilter(@Param("generalArea") String generalArea,
                                          @Param("evaluationType") String evaluationType);
+
+    // 과목별 스탯 평균 + 응답자 수 (null 제외하고 집계)
+    @Query("SELECT AVG(r.diffScore), COUNT(r.diffScore), " +
+           "AVG(r.gradScore), COUNT(r.gradScore), " +
+           "AVG(r.workScore), COUNT(r.workScore), " +
+           "AVG(r.prerequisiteScore), COUNT(r.prerequisiteScore), " +
+           "AVG(r.depthScore), COUNT(r.depthScore), " +
+           "AVG(r.pastExamScore), COUNT(r.pastExamScore) " +
+           "FROM Review r WHERE r.course.id = :courseId")
+    Object[] findStatsByCourseId(@Param("courseId") Long courseId);
 }

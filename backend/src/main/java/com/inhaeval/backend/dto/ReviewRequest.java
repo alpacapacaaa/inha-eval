@@ -1,5 +1,7 @@
 package com.inhaeval.backend.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import java.util.List;
@@ -40,11 +42,11 @@ public class ReviewRequest {
     private List<String> problemStyles;
     private String examPrepTip;
 
-    // 슬라이더 스탯 정보
-    private Integer diffScore;
-    private Integer gradScore;
-    private Integer workScore;
-    private Integer prerequisiteScore;
-    private Integer depthScore;
-    private Integer pastExamScore;
+    // 슬라이더 스탯 정보 (선택, 응답 시 1~10 범위)
+    @Min(1) @Max(10) private Integer diffScore;
+    @Min(1) @Max(10) private Integer gradScore;
+    @Min(1) @Max(10) private Integer workScore;
+    @Min(1) @Max(10) private Integer prerequisiteScore;
+    @Min(1) @Max(10) private Integer depthScore;
+    @Min(1) @Max(10) private Integer pastExamScore;
 }
