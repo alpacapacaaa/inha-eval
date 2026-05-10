@@ -3,6 +3,7 @@ package com.inhaeval.backend.controller;
 import com.inhaeval.backend.dto.ReviewRequest;
 import com.inhaeval.backend.dto.ReviewResponse;
 import com.inhaeval.backend.service.ReviewService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,7 +21,7 @@ public class ReviewController {
     // 1. 리뷰 작성 (로그인 필요)
     @PostMapping
     public ResponseEntity<Long> createReview(
-            @RequestBody ReviewRequest request,
+            @Valid @RequestBody ReviewRequest request,
             Authentication authentication) {
         String email = authentication.getName();
         Long reviewId = reviewService.createReview(request, email);
