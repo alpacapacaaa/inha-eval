@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
+  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,12 +10,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getCourseById } from '../lib/api/courses';
+import { Button, PressableScale, StatePanel } from '../components/ui';
+import { getCourseById, getCourseStats } from '../lib/api/courses';
 import { getReviewsByCourseId } from '../lib/api/reviews';
+import { loadTimetableCartIds, saveTimetableCartIds } from '../lib/storage/timetableStorage';
 import { AppNavigation } from '../navigation/AppNavigator';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { Course, Review } from '../types/models';
+import { Course, CourseStats, Review } from '../types/models';
 import { AppRoute } from '../types/navigation';
 
 interface Props {
@@ -24,62 +25,24 @@ interface Props {
   route: Extract<AppRoute, { name: 'CourseCollection' }>;
 }
 
-const ART_PALETTES = [
-  { bg: '#082f6f', deep: '#061f4d', accent: '#a9caff', ink: '#ffffff', muted: 'rgba(255,255,255,0.68)' },
-  { bg: '#0f1b2d', deep: '#111827', accent: '#d7b76a', ink: '#ffffff', muted: 'rgba(255,255,255,0.68)' },
-  { bg: '#07364c', deep: '#052838', accent: '#9ed7e8', ink: '#ffffff', muted: 'rgba(255,255,255,0.70)' },
-  { bg: '#fffaf5', deep: '#f0dfcb', accent: '#17325f', ink: '#152033', muted: '#716252' },
-] as const;
+type CardNewsKind = 'mood' | 'signals' | 'fit' | 'keywords' | 'quote';
 
-const CARD_NEWS_THEMES = [
-  { paper: '#fffdf8', accent: '#17325f', line: 'rgba(23,50,95,0.13)' },
-  { paper: '#fbfaf6', accent: '#176a42', line: 'rgba(23,106,66,0.13)' },
-  { paper: '#fffaf5', accent: '#b14524', line: 'rgba(177,69,36,0.14)' },
-  { paper: '#f8fbff', accent: '#315f7b', line: 'rgba(49,95,123,0.14)' },
-  { paper: '#fffdf9', accent: '#8f1d4d', line: 'rgba(143,29,77,0.14)' },
-] as const;
+interface CardNewsItem {
+  id: string;
+  kind: CardNewsKind;
+  badge: string;
+  title: string;
+  accent: string;
+  soft: string;
+}
 
-type ExhibitionItem =
-  | {
-      id: string;
-      kind: 'mood';
-      title: string;
-      body: string;
-      meta: string;
-      rating: number;
-    }
-  | {
-      id: string;
-      kind: 'signal';
-      title: string;
-      meta: string;
-      rating: number;
-      signals: Array<{ label: string; value: number }>;
-    }
-  | {
-      id: string;
-      kind: 'fit';
-      title: string;
-      meta: string;
-      rating: number;
-      fits: string[];
-    }
-  | {
-      id: string;
-      kind: 'quote';
-      title: string;
-      body: string;
-      meta: string;
-      rating: number;
-    }
-  | {
-      id: string;
-      kind: 'keywords';
-      title: string;
-      meta: string;
-      rating: number;
-      keywords: string[];
-    };
+const CARD_NEWS_THEME: Record<CardNewsKind, Pick<CardNewsItem, 'accent' | 'soft'>> = {
+  mood: { accent: '#2f6edb', soft: '#edf5ff' },
+  signals: { accent: '#0e9a69', soft: '#ecfaf3' },
+  fit: { accent: '#e07119', soft: '#fff4e8' },
+  keywords: { accent: '#d92f80', soft: '#fff0f7' },
+  quote: { accent: '#8a42d6', soft: '#f5edff' },
+};
 
 export function CourseCollectionScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
@@ -87,13 +50,15 @@ export function CourseCollectionScreen({ navigation, route }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [course, setCourse] = useState<Course | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [stats, setStats] = useState<CourseStats | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isInCart, setIsInCart] = useState(false);
 
-  const cardWidth = Math.min(width - 88, 430);
-  const cardHeight = Math.max(590, height - insets.top - insets.bottom - 132);
-  const sideInset = Math.max((width - cardWidth) / 2, spacing.page);
+  const cardWidth = Math.min(width - 44, 390);
+  const cardHeight = Math.min(Math.max(height - insets.top - insets.bottom - 205, 520), 640);
+  const sideInset = Math.max((width - cardWidth) / 2, spacing.related);
 
   useEffect(() => {
     let isActive = true;
@@ -103,23 +68,41 @@ export function CourseCollectionScreen({ navigation, route }: Props) {
       setErrorMessage('');
 
       try {
-        const [courseData, reviewData] = await Promise.all([
+        const [courseResult, reviewResult, statsResult, cartIds] = await Promise.allSettled([
           getCourseById(route.courseId),
           getReviewsByCourseId(route.courseId),
+          getCourseStats(route.courseId),
+          loadTimetableCartIds(),
         ]);
 
         if (!isActive) {
           return;
         }
 
-        setCourse(courseData);
-        setReviews(reviewData);
+        if (courseResult.status === 'rejected') {
+          throw courseResult.reason;
+        }
+
+        if (reviewResult.status === 'rejected') {
+          throw reviewResult.reason;
+        }
+
+        setCourse(courseResult.value);
+        setReviews(reviewResult.value);
+
+        if (statsResult.status === 'fulfilled') {
+          setStats(statsResult.value);
+        }
+
+        if (cartIds.status === 'fulfilled') {
+          setIsInCart(cartIds.value.includes(String(route.courseId)));
+        }
       } catch (error) {
         if (!isActive) {
           return;
         }
 
-        setErrorMessage(error instanceof Error ? error.message : '강의 전시를 불러오지 못했습니다.');
+        setErrorMessage(error instanceof Error ? error.message : '강의 카드뉴스를 불러오지 못했습니다.');
       } finally {
         if (isActive) {
           setIsLoading(false);
@@ -134,74 +117,61 @@ export function CourseCollectionScreen({ navigation, route }: Props) {
     };
   }, [route.courseId]);
 
-  const exhibitionItems = useMemo(() => {
+  const cards = useMemo<CardNewsItem[]>(() => {
     if (!course) {
       return [];
     }
 
-    const topReview = reviews[0];
-    const keywords = collectKeywords(course, reviews);
-    const mood = getCourseMood(course, reviews);
+    const mood = getMoodCopy(course, reviews);
 
     return [
       {
-        id: `mood-${course.id}`,
-        kind: 'mood' as const,
-        title: mood.label,
-        body: mood.summary,
-        meta: `${course.department} · ${course.type}`,
-        rating: course.rating,
+        id: 'mood',
+        kind: 'mood',
+        badge: '전체 분위기',
+        title: `${mood.title} 강의`,
+        ...CARD_NEWS_THEME.mood,
       },
       {
-        id: `signal-${course.id}`,
-        kind: 'signal' as const,
-        title: '수강 신호',
-        meta: '과제 · 출결 · 시험 · 학점',
-        rating: course.rating,
-        signals: [
-          { label: '과제', value: metricToScore(course.workload) },
-          { label: '출결', value: metricToScore(course.attendance) },
-          { label: '시험', value: metricToScore(topReview?.examInfo ?? course.difficulty) },
-          { label: '학점', value: 6 - metricToScore(course.grading) },
-        ],
+        id: 'signals',
+        kind: 'signals',
+        badge: '수강 신호 지표',
+        title: '강의력 · 난이도 · 과제 · 출결 · 학점 · 족보',
+        ...CARD_NEWS_THEME.signals,
       },
       {
-        id: `fit-${course.id}`,
-        kind: 'fit' as const,
-        title: '잘 맞는 사람',
-        meta: '추천 대상',
-        rating: course.rating,
-        fits: getFitLabels(course, reviews),
+        id: 'fit',
+        kind: 'fit',
+        badge: '추천 대상',
+        title: '이런 학생에게 잘 맞아요',
+        ...CARD_NEWS_THEME.fit,
       },
       {
-        id: `quote-${course.id}`,
-        kind: 'quote' as const,
-        title: topReview ? '대표 한 문장' : '첫 리뷰를 기다리는 강의',
-        body: topReview?.oneLineTip || topReview?.content || '이 강의는 아직 상세 리뷰가 부족해요. 수강 경험이 있다면 후배들이 바로 참고할 수 있도록 첫 기록을 남겨주세요.',
-        meta: topReview ? `${topReview.semester} · 도움 ${topReview.likes}` : `${course.professor} 교수님`,
-        rating: topReview?.rating ?? course.rating,
+        id: 'keywords',
+        kind: 'keywords',
+        badge: '핵심 키워드',
+        title: `${course.name}의 핵심 키워드`,
+        ...CARD_NEWS_THEME.keywords,
       },
       {
-        id: `keywords-${course.id}`,
-        kind: 'keywords' as const,
-        title: '키워드 타일',
-        meta: `신호 ${keywords.length}개`,
-        rating: course.rating,
-        keywords,
+        id: 'quote',
+        kind: 'quote',
+        badge: '마지막 한줄 요약',
+        title: '한 줄 요약',
+        ...CARD_NEWS_THEME.quote,
       },
     ];
   }, [course, reviews]);
 
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 16));
-    setActiveIndex(Math.max(0, Math.min(nextIndex, exhibitionItems.length - 1)));
+    setActiveIndex(Math.max(0, Math.min(nextIndex, cards.length - 1)));
   };
 
   if (isLoading) {
     return (
       <SafeAreaView style={styles.stateSafeArea}>
-        <ActivityIndicator color={colors.primary} />
-        <Text style={styles.stateText}>강의 전시를 준비하는 중입니다.</Text>
+        <StatePanel label="강의 카드뉴스를 준비하는 중입니다." loading />
       </SafeAreaView>
     );
   }
@@ -209,412 +179,416 @@ export function CourseCollectionScreen({ navigation, route }: Props) {
   if (errorMessage || !course) {
     return (
       <SafeAreaView style={styles.stateSafeArea}>
-        <Text style={styles.errorText}>{errorMessage || '강의 정보를 찾지 못했습니다.'}</Text>
+        <StatePanel label={errorMessage || '강의 정보를 찾지 못했습니다.'} error />
       </SafeAreaView>
     );
   }
 
+  const handleOpenDetail = () => navigation.navigate({ name: 'CourseDetail', courseId: course.id });
+  const handleOpenReviewWrite = () => navigation.navigate({ name: 'ReviewWrite', courseId: course.id });
+
+  const handleToggleCart = async () => {
+    const currentIds = await loadTimetableCartIds();
+    const courseId = String(course.id);
+    const nextIds = currentIds.includes(courseId)
+      ? currentIds.filter((id) => id !== courseId)
+      : [...currentIds, courseId];
+    await saveTimetableCartIds(nextIds);
+    setIsInCart(!currentIds.includes(courseId));
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-      <View style={[styles.screen, { paddingTop: insets.top + spacing.related, paddingBottom: insets.bottom + spacing.related }]}>
-        <View style={styles.viewerTitleBlock}>
-          <Text style={styles.collectionTitle} numberOfLines={1}>
-            {course.name}
-          </Text>
-          <Text style={styles.collectionSubtitle} numberOfLines={1}>
-            {course.professor}
-          </Text>
+      <View style={[styles.screen, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
+        <View style={styles.topBar}>
+          <PressableScale style={styles.iconButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backGlyph}>‹</Text>
+          </PressableScale>
+
+          <View style={styles.titleBlock}>
+            <Text style={styles.topTitle} numberOfLines={1}>{course.name}</Text>
+            <Text style={styles.topSubtitle} numberOfLines={1}>{course.professor}</Text>
+          </View>
+
+          <View style={styles.topActions}>
+            <PressableScale style={[styles.iconButton, isInCart ? styles.iconButtonActive : null]} onPress={handleToggleCart}>
+              <BookmarkGlyph active={isInCart} />
+            </PressableScale>
+            <PressableScale style={styles.iconButton} onPress={() => Alert.alert('더보기', '공유 기능은 준비 중입니다.')}>
+              <MoreGlyph />
+            </PressableScale>
+          </View>
         </View>
 
         <ScrollView
           ref={scrollRef}
-          style={styles.viewerScroll}
           horizontal
-          pagingEnabled={false}
           decelerationRate="fast"
           snapToInterval={cardWidth + 16}
-          snapToAlignment="start"
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.viewerRail, { paddingHorizontal: sideInset }]}
+          contentContainerStyle={[styles.cardRail, { paddingHorizontal: sideInset }]}
           onMomentumScrollEnd={handleMomentumEnd}
         >
-          {exhibitionItems.map((item, index) => (
-            <ReviewExhibitCard
+          {cards.map((item) => (
+            <CardNewsSlide
               key={item.id}
               item={item}
-              index={index}
+              course={course}
+              reviews={reviews}
+              stats={stats}
               width={cardWidth}
               height={cardHeight}
-              course={course}
             />
           ))}
         </ScrollView>
 
-        <View style={styles.dotRail}>
-          {exhibitionItems.map((item, index) => (
+        <View style={styles.pagination}>
+          {cards.map((item, index) => (
             <View
               key={`dot-${item.id}`}
-              style={[styles.dot, activeIndex === index ? styles.dotActive : null]}
+              style={[
+                styles.dot,
+                { backgroundColor: activeIndex === index ? item.accent : '#d8dce4' },
+                activeIndex === index ? styles.dotActive : null,
+              ]}
             />
           ))}
         </View>
 
-        <View style={styles.actionButtonRow}>
-          <Pressable
-            style={styles.actionButtonOutline}
-            onPress={() => navigation.navigate({ name: 'CourseDetail', courseId: course.id })}
-          >
-            <Text style={styles.actionButtonOutlineText}>상세 강의평 보기</Text>
-          </Pressable>
-          <Pressable
-            style={styles.actionButtonFill}
-            onPress={() => navigation.navigate({ name: 'ReviewWrite', courseId: course.id })}
-          >
-            <Text style={styles.actionButtonFillText}>강의평 쓰기</Text>
-          </Pressable>
+        <View style={styles.ctaRow}>
+          <Button label="상세 강의평 보기" variant="secondary" style={styles.ctaButton} onPress={handleOpenDetail} />
+          <Button label="강의평 쓰기" style={styles.ctaButton} onPress={handleOpenReviewWrite} />
         </View>
       </View>
     </SafeAreaView>
   );
 }
 
-function ActionButton({
-  label,
-  icon,
-  active = false,
-  onPress,
-}: {
-  label: string;
-  icon: 'link' | 'down' | 'info';
-  active?: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable style={styles.actionItem} onPress={onPress}>
-      <View style={[styles.actionIconCircle, active ? styles.actionIconCircleActive : null]}>
-        {icon === 'link' ? <View style={styles.linkIcon} /> : null}
-        {icon === 'down' ? <Text style={styles.actionGlyph}>+</Text> : null}
-        {icon === 'info' ? <Text style={[styles.actionGlyph, active ? styles.actionGlyphActive : null]}>i</Text> : null}
-      </View>
-      <Text style={[styles.actionLabel, active ? styles.actionLabelActive : null]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function ReviewExhibitCard({
+function CardNewsSlide({
   item,
-  index,
+  course,
+  reviews,
+  stats,
   width,
   height,
-  course,
 }: {
-  item: ExhibitionItem;
-  index: number;
+  item: CardNewsItem;
+  course: Course;
+  reviews: Review[];
+  stats: CourseStats | null;
   width: number;
   height: number;
-  course: Course;
 }) {
-  const theme = CARD_NEWS_THEMES[index % CARD_NEWS_THEMES.length];
-  const metrics =
-    item.kind === 'signal'
-      ? item.signals
-      : [
-          { label: '평점', value: Math.round(item.rating) },
-          { label: '리뷰', value: Math.min(course.reviewCount || 1, 5) },
-          { label: '학점', value: Math.min(course.credits || 3, 5) },
-          { label: '난이도', value: metricToScore(course.difficulty) },
-        ];
-  const cardNews = getCardNewsCopy(item, course);
-
   return (
-    <View style={[styles.exhibitCard, { width, height }]}>
-      <View style={[styles.cardNewsCanvas, { backgroundColor: theme.paper }]}>
-        <View style={styles.cardNewsHeader}>
-          <View style={[styles.cardNewsIssue, { backgroundColor: theme.accent }]}>
-            <Text style={styles.cardNewsIssueText}>ISSUE {String(index + 1).padStart(2, '0')}</Text>
+    <View style={[styles.slideFrame, { width, height }]}>
+      <View style={styles.slidePaper}>
+        <View style={styles.slideHeader}>
+          <View style={[styles.badge, { backgroundColor: item.soft }]}>
+            <Text style={[styles.badgeText, { color: item.accent }]}>{item.badge}</Text>
           </View>
-          <Text style={styles.cardNewsType}>{cardNews.kicker}</Text>
+          <Text style={styles.slideTitle}>{item.title}</Text>
         </View>
 
-        <View style={styles.cardNewsHero}>
-          <Text style={[styles.cardNewsKicker, { color: theme.accent }]}>{cardNews.label}</Text>
-          <Text style={styles.cardNewsHeadline} numberOfLines={3}>
-            {cardNews.headline}
-          </Text>
-          <Text style={styles.cardNewsCourse} numberOfLines={2}>
-            {course.name}
-          </Text>
+        <View style={styles.hairline} />
+
+        <View style={styles.slideBody}>
+          {item.kind === 'mood' ? <MoodSlide course={course} reviews={reviews} accent={item.accent} soft={item.soft} /> : null}
+          {item.kind === 'signals' ? <SignalSlide stats={stats} accent={item.accent} soft={item.soft} /> : null}
+          {item.kind === 'fit' ? <FitSlide course={course} reviews={reviews} accent={item.accent} /> : null}
+          {item.kind === 'keywords' ? <KeywordSlide course={course} reviews={reviews} accent={item.accent} soft={item.soft} /> : null}
+          {item.kind === 'quote' ? <QuoteSlide course={course} reviews={reviews} accent={item.accent} soft={item.soft} /> : null}
         </View>
 
-        <View style={[styles.cardNewsQuoteBox, { borderColor: theme.line }]}>
-          <Text style={styles.cardNewsBody} numberOfLines={5}>
-            {cardNews.body}
-          </Text>
-        </View>
-
-        <View style={styles.cardNewsFeatureArea}>
-          {item.kind === 'mood' ? (
-            <View style={styles.cardNewsOverviewPanel}>
-              <View style={[styles.cardNewsBigStat, { backgroundColor: theme.accent }]}>
-                <Text style={styles.cardNewsBigStatValue}>{item.rating.toFixed(1)}</Text>
-                <Text style={styles.cardNewsBigStatLabel}>STAR RATING</Text>
-              </View>
-              <View style={styles.cardNewsSummaryStack}>
-                <Text style={styles.cardNewsSummaryLabel}>전체 분위기</Text>
-                <Text style={styles.cardNewsSummaryText} numberOfLines={3}>{item.title}</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {item.kind === 'signal' ? (
-            <View style={styles.cardNewsSignalList}>
-              {item.signals.map((signal) => (
-                <View key={`${item.id}-signal-${signal.label}`} style={styles.cardNewsSignalRow}>
-                  <Text style={styles.cardNewsSignalLabel}>{signal.label}</Text>
-                  <View style={styles.cardNewsSignalTrack}>
-                    {Array.from({ length: 5 }).map((_, signalIndex) => (
-                      <View
-                        key={`${item.id}-${signal.label}-${signalIndex}`}
-                        style={[
-                          styles.cardNewsSignalBar,
-                          {
-                            backgroundColor: signalIndex < signal.value ? theme.accent : theme.line,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {item.kind === 'fit' ? (
-            <View style={styles.cardNewsFitGrid}>
-              {item.fits.slice(0, 4).map((fit, fitIndex) => (
-                <View key={`${item.id}-fit-${fit}`} style={[styles.cardNewsFitCard, { borderColor: theme.line }]}>
-                  <Text style={[styles.cardNewsFitIndex, { color: theme.accent }]}>
-                    {String(fitIndex + 1).padStart(2, '0')}
-                  </Text>
-                  <Text style={styles.cardNewsFitText} numberOfLines={2}>{fit}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {item.kind === 'quote' ? (
-            <View style={[styles.cardNewsQuotePanel, { borderColor: theme.line }]}>
-              <Text style={[styles.cardNewsQuoteMark, { color: theme.accent }]}>“</Text>
-              <Text style={styles.cardNewsQuoteText} numberOfLines={5}>{item.body}</Text>
-            </View>
-          ) : null}
-
-          {item.kind === 'keywords' ? (
-            <View style={styles.cardNewsChipGrid}>
-              {item.keywords.slice(0, 6).map((keyword) => (
-                <Text key={`${item.id}-keyword-${keyword}`} style={[styles.cardNewsChip, { borderColor: theme.line }]}>
-                  {keyword}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.cardNewsFooter}>
-          {metrics.slice(0, 4).map((metric) => (
-            <View key={`${item.id}-${metric.label}`} style={[styles.cardNewsMetric, { borderColor: theme.line }]}>
-              <Text style={styles.cardNewsMetricLabel}>{metric.label}</Text>
-              <Text style={styles.cardNewsMetricValue}>{metric.value}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.cardNewsMetaRow}>
-          <Text style={styles.cardNewsMeta} numberOfLines={1}>
-            {course.professor} · {course.department}
-          </Text>
-          <Text style={styles.cardNewsMeta}>{course.credits || 3}학점</Text>
+        <View style={styles.slideFooter}>
+          <Text style={styles.footerMeta} numberOfLines={1}>{course.name} · {course.professor}</Text>
+          <Text style={[styles.footerRating, { color: item.accent }]}>★ {course.rating.toFixed(1)}</Text>
         </View>
       </View>
     </View>
   );
 }
 
-function SignalArtwork({
-  item,
-  color,
+function MoodSlide({
+  course,
+  reviews,
+  accent,
+  soft,
 }: {
-  item: Extract<ExhibitionItem, { kind: 'signal' }>;
-  color: string;
+  course: Course;
+  reviews: Review[];
+  accent: string;
+  soft: string;
 }) {
+  const mood = getMoodCopy(course, reviews);
+
   return (
-    <View style={styles.signalBoard}>
-      {item.signals.map((signal) => (
-        <View key={signal.label} style={styles.signalRow}>
-          <Text style={[styles.signalRowLabel, { color }]}>{signal.label}</Text>
-          <View style={styles.signalBlocks}>
-            {Array.from({ length: 5 }).map((_, index) => (
-              <View
-                key={`${signal.label}-${index}`}
-                style={[
-                  styles.signalBlock,
-                  { backgroundColor: index < signal.value ? color : 'rgba(255,255,255,0.20)' },
-                ]}
-              />
-            ))}
+    <View style={styles.moodContent}>
+      <View style={styles.ratingRow}>
+        <Text style={[styles.bigRating, { color: accent }]}>{course.rating.toFixed(1)}</Text>
+        <Text style={styles.ratingMax}>/ 5.0</Text>
+      </View>
+
+      <GrowthIllustration accent={accent} soft={soft} />
+
+      <View style={[styles.quoteBox, { backgroundColor: soft }]}>
+        <Text style={[styles.quoteGlyph, { color: accent }]}>“</Text>
+        <Text style={styles.quoteBoxText}>{mood.summary}</Text>
+      </View>
+    </View>
+  );
+}
+
+function SignalSlide({
+  stats,
+  accent,
+  soft,
+}: {
+  stats: CourseStats | null;
+  accent: string;
+  soft: string;
+}) {
+  const rows = getSignalRows(stats);
+
+  if (rows.length === 0) {
+    return (
+      <View style={styles.signalEmpty}>
+        <ClipboardIllustration accent={accent} soft={soft} />
+        <View style={[styles.emptyMessage, { backgroundColor: soft }]}>
+          <Text style={[styles.emptyTitle, { color: accent }]}>아직 데이터가 없어요</Text>
+          <Text style={styles.emptyBody}>슬라이더를 포함한 수강평을 남기면 이 항목이 채워집니다.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.signalContent}>
+      <ClipboardIllustration accent={accent} soft={soft} />
+      <View style={styles.signalList}>
+        {rows.map((row) => (
+          <View key={row.label} style={styles.signalRow}>
+            <View style={styles.signalLabelRow}>
+              <Text style={styles.signalLabel}>{row.label}</Text>
+              <Text style={[styles.signalValue, { color: accent }]}>{row.value.toFixed(1)}</Text>
+            </View>
+            <View style={styles.signalTrack}>
+              <View style={[styles.signalFill, { width: `${Math.min(row.value, 10) * 10}%`, backgroundColor: accent }]} />
+            </View>
           </View>
-        </View>
-      ))}
+        ))}
+      </View>
     </View>
   );
 }
 
-function FitArtwork({
-  item,
-  color,
+function FitSlide({
+  course,
+  reviews,
   accent,
 }: {
-  item: Extract<ExhibitionItem, { kind: 'fit' }>;
-  color: string;
+  course: Course;
+  reviews: Review[];
   accent: string;
 }) {
+  const labels = getFitLabels(course, reviews).slice(0, 3);
+
   return (
-    <View style={styles.fitBoard}>
-      {item.fits.slice(0, 4).map((fit, index) => (
-        <View key={fit} style={styles.fitFigure}>
-          <View style={[styles.fitHead, { backgroundColor: index === 0 ? accent : color }]} />
-          <View style={[styles.fitBody, { backgroundColor: index === 0 ? accent : color }]} />
-          <Text style={[styles.fitText, { color }]} numberOfLines={1}>{fit}</Text>
+    <View style={styles.fitContent}>
+      {labels.map((label, index) => (
+        <View key={label} style={styles.fitRow}>
+          <View style={styles.fitIndexWrap}>
+            <Text style={[styles.fitIndex, { color: accent }]}>{String(index + 1).padStart(2, '0')}</Text>
+          </View>
+          <View style={[styles.fitIcon, { borderColor: accent }]}>
+            <View style={[styles.fitIconDot, { backgroundColor: accent }]} />
+          </View>
+          <Text style={styles.fitText}>{label}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-function KeywordArtwork({
-  item,
-  color,
+function KeywordSlide({
+  course,
+  reviews,
   accent,
+  soft,
 }: {
-  item: Extract<ExhibitionItem, { kind: 'keywords' }>;
-  color: string;
+  course: Course;
+  reviews: Review[];
   accent: string;
+  soft: string;
 }) {
+  const keywords = collectKeywords(course, reviews).slice(0, 6);
+
   return (
-    <View style={styles.keywordBoard}>
-      {item.keywords.slice(0, 8).map((keyword, index) => (
-        <View
-          key={keyword}
-          style={[
-            styles.keywordTile,
-            {
-              backgroundColor: index % 2 === 0 ? color : accent,
-              transform: [{ rotate: `${index % 2 === 0 ? -3 : 3}deg` }],
-            },
-          ]}
-        >
-          <Text style={styles.keywordTileText} numberOfLines={1}>{keyword}</Text>
-        </View>
-      ))}
+    <View style={styles.keywordContent}>
+      <View style={styles.keywordGrid}>
+        {keywords.map((keyword) => (
+          <View key={keyword} style={[styles.keywordChip, { backgroundColor: soft }]}>
+            <Text style={styles.keywordText}>{keyword}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={[styles.keywordSource, { backgroundColor: soft }]}>
+        <SearchGlyph accent={accent} />
+        <Text style={styles.keywordSourceText}>후기 {course.reviewCount}개에서 추출한 키워드예요.</Text>
+      </View>
     </View>
   );
 }
 
-function getExhibitLabel(kind: ExhibitionItem['kind']) {
-  switch (kind) {
-    case 'mood':
-      return '강의 분위기';
-    case 'signal':
-      return '수강 신호';
-    case 'fit':
-      return '추천 대상';
-    case 'quote':
-      return '대표 후기';
-    case 'keywords':
-      return '핵심 키워드';
-    default:
-      return '큐레이터 노트';
-  }
+function QuoteSlide({
+  course,
+  reviews,
+  accent,
+  soft,
+}: {
+  course: Course;
+  reviews: Review[];
+  accent: string;
+  soft: string;
+}) {
+  const sentence = getOneLineSummary(course, reviews);
+
+  return (
+    <View style={styles.lastQuoteContent}>
+      <View style={[styles.quoteCircle, { backgroundColor: soft }]}>
+        <Text style={[styles.lastQuoteGlyph, { color: accent }]}>“</Text>
+      </View>
+      <Text style={styles.lastQuoteText}>{sentence}</Text>
+    </View>
+  );
 }
 
-function getCardNewsCopy(item: ExhibitionItem, course: Course) {
-  if (item.kind === 'mood') {
-    return {
-      kicker: 'OVERVIEW',
-      label: '전체 분위기',
-      headline: `${course.name}는 ${item.title}`,
-      title: item.title,
-      body: item.body,
-    };
-  }
-
-  if (item.kind === 'signal') {
-    return {
-      kicker: 'CHECK POINT',
-      label: '수강 체크포인트',
-      headline: '수강 전 먼저 볼 네 가지 신호',
-      title: '과제, 출결, 시험, 학점',
-      body: '후기에서 자주 확인하는 기준을 한 장에 모았습니다.',
-    };
-  }
-
-  if (item.kind === 'fit') {
-    return {
-      kicker: 'WHO FITS',
-      label: '추천 대상',
-      headline: '이런 학생에게 더 잘 맞아요',
-      title: item.fits.slice(0, 2).join(' · '),
-      body: item.fits.join(', '),
-    };
-  }
-
-  if (item.kind === 'quote') {
-    return {
-      kicker: 'REVIEW LINE',
-      label: '대표 후기',
-      headline: item.title,
-      title: '대표 후기',
-      body: item.body,
-    };
-  }
-
-  return {
-    kicker: 'KEYWORDS',
-    label: '핵심 키워드',
-    headline: '후기에서 뽑은 핵심 키워드',
-    title: item.keywords.slice(0, 3).join(' · '),
-    body: item.keywords.join(', '),
-  };
+function GrowthIllustration({ accent, soft }: { accent: string; soft: string }) {
+  return (
+    <View style={styles.growthWrap}>
+      <View style={[styles.growthOrb, { backgroundColor: soft }]} />
+      <View style={styles.barGroup}>
+        {[46, 78, 116].map((barHeight, index) => (
+          <View key={barHeight} style={[styles.growthBar, { height: barHeight, opacity: 0.32 + index * 0.18, backgroundColor: accent }]} />
+        ))}
+      </View>
+      <View style={[styles.arrowStem, { backgroundColor: accent }]} />
+      <View style={[styles.arrowHead, { borderBottomColor: accent }]} />
+      <View style={[styles.growthDot, { backgroundColor: accent, left: 24, bottom: 38 }]} />
+      <View style={[styles.growthDot, { backgroundColor: accent, left: 54, bottom: 55, opacity: 0.35 }]} />
+    </View>
+  );
 }
 
-function getCourseMood(course: Course, reviews: Review[]) {
-  const text = `${course.difficulty} ${course.workload} ${course.attendance} ${reviews.map((review) => review.content).join(' ')}`.toLowerCase();
+function ClipboardIllustration({ accent, soft }: { accent: string; soft: string }) {
+  return (
+    <View style={[styles.clipboardOrb, { backgroundColor: soft }]}>
+      <View style={[styles.clipboard, { borderColor: accent }]}>
+        <View style={[styles.clipTop, { backgroundColor: accent }]} />
+        {[0, 1, 2].map((line) => (
+          <View key={line} style={styles.clipLineRow}>
+            <View style={[styles.checkMark, { borderColor: accent }]}>
+              <View style={[styles.checkDot, { backgroundColor: accent }]} />
+            </View>
+            <View style={[styles.clipLine, { backgroundColor: accent, opacity: 0.24 + line * 0.12 }]} />
+          </View>
+        ))}
+      </View>
+      <View style={[styles.checkBadge, { backgroundColor: accent }]}>
+        <Text style={styles.checkBadgeText}>✓</Text>
+      </View>
+    </View>
+  );
+}
 
-  if (text.includes('hard') || text.includes('heavy') || text.includes('많') || text.includes('어렵')) {
+function BookmarkGlyph({ active }: { active: boolean }) {
+  return (
+    <View style={[styles.bookmarkGlyph, active ? styles.bookmarkGlyphActive : null]} />
+  );
+}
+
+function MoreGlyph() {
+  return (
+    <View style={styles.moreGlyph}>
+      <View style={styles.moreDot} />
+      <View style={styles.moreDot} />
+      <View style={styles.moreDot} />
+    </View>
+  );
+}
+
+function SearchGlyph({ accent }: { accent: string }) {
+  return (
+    <View style={styles.searchGlyph}>
+      <View style={[styles.searchCircle, { borderColor: accent }]} />
+      <View style={[styles.searchHandle, { backgroundColor: accent }]} />
+    </View>
+  );
+}
+
+function getMoodCopy(course: Course, reviews: Review[]) {
+  const text = `${course.difficulty} ${course.workload} ${course.attendance} ${reviews.map((review) => review.content).join(' ')}`;
+
+  if (course.rating >= 4.5) {
     return {
-      label: '성장형',
+      title: '성장형',
       summary: '부담은 있지만 듣고 나면 남는 게 많다는 신호가 강해요.',
+    };
+  }
+
+  if (text.includes('많') || text.includes('어렵') || text.toLowerCase().includes('hard')) {
+    return {
+      title: '도전형',
+      summary: '난이도와 준비량은 있지만 성실하게 따라가면 얻는 게 있는 강의예요.',
     };
   }
 
   if (course.type.includes('교양')) {
     return {
-      label: '교양 컬렉션',
-      summary: '가볍게 볼 수 있지만 취향에 맞는지 확인하면 좋은 강의예요.',
-    };
-  }
-
-  if (course.rating >= 4.2) {
-    return {
-      label: '추천작',
-      summary: '만족도와 후기 흐름이 좋아 먼저 열어볼 만한 강의예요.',
+      title: '탐색형',
+      summary: '전공 밖 관심사를 넓히면서 부담을 조절하기 좋은 흐름이에요.',
     };
   }
 
   return {
-    label: '균형형',
+    title: '균형형',
     summary: '난이도, 과제, 출결을 함께 보고 판단하기 좋은 강의예요.',
   };
+}
+
+function getSignalRows(stats: CourseStats | null) {
+  if (!stats) {
+    return [];
+  }
+
+  return [
+    { label: '강의력', value: stats.teachingScore },
+    { label: '난이도', value: stats.diffScore },
+    { label: '과제', value: stats.workScore },
+    { label: '출결', value: stats.attScore },
+    { label: '학점', value: stats.gradScore },
+    { label: '족보', value: stats.pastExamScore },
+  ].filter((row): row is { label: string; value: number } => row.value !== null);
+}
+
+function getFitLabels(course: Course, reviews: Review[]) {
+  const labels = reviews.flatMap((review) => review.recommendFor ?? []).filter(Boolean);
+
+  if (labels.length > 0) {
+    return [...new Set(labels)];
+  }
+
+  const normalized = `${course.attendance} ${course.workload} ${course.grading}`;
+
+  if (course.type.includes('교양')) {
+    return ['교양을 부담 없이 채우고 싶은 사람', '토론이나 과제를 감당할 수 있는 사람', '수업 분위기를 보고 고르는 사람'];
+  }
+
+  if (normalized.includes('많') || normalized.includes('엄격')) {
+    return ['성실한 출석력을 가진 사람', '중간기말 대신 퀴즈로 대체하고 싶은 사람', '복습 루틴을 꾸준히 가져갈 사람'];
+  }
+
+  return ['전공 흐름을 차근차근 잡고 싶은 사람', '과제 부담을 미리 알고 준비하는 사람', '수강 전에 리뷰 맥락을 보는 사람'];
 }
 
 function collectKeywords(course: Course, reviews: Review[]) {
@@ -626,977 +600,570 @@ function collectKeywords(course: Course, reviews: Review[]) {
   }
 
   if (keywords.size === 0) {
-    keywords.add(course.workload);
-    keywords.add(course.attendance);
-    keywords.add(course.difficulty);
-    keywords.add(course.grading);
+    [course.workload, course.attendance, course.difficulty, course.grading, course.category, course.type]
+      .filter(Boolean)
+      .forEach((keyword) => keywords.add(keyword));
   }
 
-  return [...keywords].filter(Boolean).slice(0, 8);
+  return [...keywords].slice(0, 8);
 }
 
-function getFitLabels(course: Course, reviews: Review[]) {
-  const labels = reviews.flatMap((review) => review.recommendFor ?? []).filter(Boolean);
+function getOneLineSummary(course: Course, reviews: Review[]) {
+  const topReview = reviews.find((review) => review.oneLineTip?.trim()) ?? reviews[0];
 
-  if (labels.length > 0) {
-    return [...new Set(labels)].slice(0, 4);
+  if (topReview?.oneLineTip) {
+    return topReview.oneLineTip;
   }
 
-  if (course.type.includes('교양')) {
-    return ['교양 탐색', '부담 조절', '학점 관리', '취향 확인'];
+  if (topReview?.content) {
+    return topReview.content;
   }
 
-  return ['전공 감각', '성실형', '복습형', '성장 지향'];
-}
-
-function metricToScore(value?: string | null) {
-  const normalized = `${value ?? ''}`.toLowerCase();
-
-  if (normalized.includes('easy') || normalized.includes('낮') || normalized.includes('적')) {
-    return 2;
-  }
-
-  if (normalized.includes('hard') || normalized.includes('heavy') || normalized.includes('높') || normalized.includes('많')) {
-    return 4;
-  }
-
-  return 3;
+  return getMoodCopy(course, reviews).summary;
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
-  },
-  screen: {
-    flex: 1,
-    gap: 12,
+    backgroundColor: colors.background,
   },
   stateSafeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.related,
     paddingHorizontal: spacing.page,
   },
-  stateText: {
-    color: '#66748a',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '700',
-    textAlign: 'center',
+  screen: {
+    flex: 1,
+    gap: 10,
   },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.group,
-    justifyContent: 'space-between',
-    gap: spacing.related,
-  },
-  roundButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  roundButtonText: {
-    color: '#121826',
-    fontSize: 30,
-    fontWeight: '500',
-    marginTop: -3,
-  },
-  infoButtonText: {
-    color: '#121826',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  handle: {
-    width: 48,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(18,24,38,0.18)',
-  },
-  viewerTitleBlock: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.section,
-    gap: 3,
-  },
-  collectionTitle: {
-    color: '#121826',
-    fontSize: 22,
-    lineHeight: 27,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  collectionSubtitle: {
-    color: '#85858d',
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '700',
-  },
-  viewerScroll: {
-    flex: 1,
-  },
-  viewerRail: {
-    gap: 16,
-    alignItems: 'center',
-  },
-  exhibitCard: {
-    borderRadius: 28,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: 12,
-    shadowColor: '#16499a',
-    shadowOpacity: 0.10,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-  },
-  cardNewsCanvas: {
-    flex: 1,
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 18,
-    justifyContent: 'space-between',
-  },
-  cardNewsHeader: {
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.related,
+    paddingHorizontal: spacing.page,
   },
-  cardNewsIssue: {
-    borderRadius: 999,
+  titleBlock: {
+    flex: 1,
+    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  cardNewsIssueText: {
-    color: '#ffffff',
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  cardNewsType: {
-    color: 'rgba(18,24,38,0.46)',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-  },
-  cardNewsHero: {
-    gap: 9,
-    paddingTop: 18,
-  },
-  cardNewsKicker: {
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
-  cardNewsHeadline: {
-    color: '#121826',
-    fontSize: 32,
-    lineHeight: 38,
-    fontWeight: '900',
-    letterSpacing: -1.45,
-  },
-  cardNewsCourse: {
-    color: 'rgba(18,24,38,0.58)',
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: '800',
-    letterSpacing: -0.45,
-  },
-  cardNewsQuoteBox: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    paddingVertical: 18,
-    marginTop: 6,
-  },
-  cardNewsBody: {
-    color: '#384152',
-    fontSize: 17,
-    lineHeight: 27,
-    fontWeight: '800',
-    letterSpacing: -0.35,
-  },
-  cardNewsFeatureArea: {
-    minHeight: 128,
-    justifyContent: 'center',
-  },
-  cardNewsOverviewPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  cardNewsSummaryStack: {
-    flex: 1,
-    gap: 6,
-  },
-  cardNewsSummaryLabel: {
-    color: 'rgba(18,24,38,0.48)',
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  cardNewsSummaryText: {
-    color: '#121826',
-    fontSize: 21,
-    lineHeight: 26,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  cardNewsSignalList: {
-    gap: 12,
-  },
-  cardNewsSignalRow: {
-    gap: 7,
-  },
-  cardNewsSignalLabel: {
-    color: '#121826',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-  },
-  cardNewsSignalTrack: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  cardNewsSignalBar: {
-    flex: 1,
-    height: 12,
-    borderRadius: 999,
-  },
-  cardNewsChipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 9,
-  },
-  cardNewsFitGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 9,
-  },
-  cardNewsFitCard: {
-    width: '48%',
-    minHeight: 72,
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.52)',
-  },
-  cardNewsFitIndex: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  cardNewsFitText: {
-    color: '#121826',
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '900',
-    letterSpacing: -0.35,
-  },
-  cardNewsChip: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    color: '#121826',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-  },
-  cardNewsQuotePanel: {
-    borderLeftWidth: 3,
-    paddingLeft: 16,
-    paddingVertical: 4,
     gap: 2,
   },
-  cardNewsQuoteMark: {
-    fontSize: 42,
-    lineHeight: 38,
-    fontWeight: '900',
-  },
-  cardNewsQuoteText: {
-    color: '#121826',
-    fontSize: 19,
-    lineHeight: 28,
-    fontWeight: '900',
-    letterSpacing: -0.55,
-  },
-  cardNewsBigStat: {
-    alignSelf: 'flex-start',
-    minWidth: 142,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  cardNewsBigStatValue: {
-    color: '#ffffff',
-    fontSize: 42,
-    lineHeight: 46,
-    fontWeight: '900',
-    letterSpacing: -1.5,
-  },
-  cardNewsBigStatLabel: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  cardNewsFooter: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  cardNewsMetric: {
-    flex: 1,
-    borderTopWidth: 1,
-    paddingTop: 10,
-  },
-  cardNewsMetricLabel: {
-    color: 'rgba(18,24,38,0.48)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-  },
-  cardNewsMetricValue: {
-    marginTop: 4,
-    color: '#121826',
-    fontSize: 24,
-    lineHeight: 27,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  cardNewsMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  cardNewsMeta: {
-    flexShrink: 1,
-    color: 'rgba(18,24,38,0.48)',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-  },
-  exhibitCanvas: {
-    flex: 1,
-    borderRadius: 22,
-    backgroundColor: '#e8e5df',
-    overflow: 'hidden',
-    padding: 10,
-    gap: 10,
-  },
-  sheetTop: {
-    height: 236,
-    borderRadius: 22,
-    overflow: 'hidden',
-    backgroundColor: '#d1bfb7',
-  },
-  sheetGrid: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetGridVertical: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '25%',
-    width: 1,
-    backgroundColor: 'rgba(18,24,38,0.36)',
-  },
-  sheetGridVerticalAlt: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '55%',
-    width: 1,
-    backgroundColor: 'rgba(18,24,38,0.28)',
-  },
-  sheetGridHorizontal: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '36%',
-    height: 1,
-    backgroundColor: 'rgba(18,24,38,0.34)',
-  },
-  sheetGridHorizontalAlt: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '68%',
-    height: 1,
-    backgroundColor: 'rgba(18,24,38,0.26)',
-  },
-  courseNeedleWrap: {
-    position: 'absolute',
-    left: '30%',
-    bottom: 48,
-    width: 94,
-    height: 128,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  courseNeedleBase: {
-    position: 'absolute',
-    bottom: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  courseNeedle: {
-    position: 'absolute',
-    bottom: 14,
-    width: 52,
-    height: 112,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    transform: [{ scaleX: 0.72 }],
-  },
-  courseNeedleArm: {
-    position: 'absolute',
-    bottom: 24,
-    width: 4,
-    height: 110,
-    borderRadius: 999,
-    transform: [{ rotate: '23deg' }],
-  },
-  courseTitlePanel: {
-    position: 'absolute',
-    left: 16,
-    bottom: 12,
-    right: 94,
-    borderRadius: 12,
-    backgroundColor: 'rgba(225,213,207,0.88)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  coursePanelKicker: {
-    color: 'rgba(18,24,38,0.54)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.9,
-  },
-  coursePanelTitle: {
-    marginTop: 3,
-    color: '#111827',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  coursePanelMeta: {
-    marginTop: 5,
-    color: 'rgba(18,24,38,0.62)',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-  },
-  sideControls: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 70,
-    gap: 8,
-  },
-  levelPanel: {
-    height: 92,
-    borderRadius: 7,
-    backgroundColor: '#c3aa6c',
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    justifyContent: 'space-between',
-  },
-  levelSign: {
-    color: '#171717',
-    fontSize: 16,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-  levelTicks: {
-    alignItems: 'flex-end',
-    gap: 7,
-  },
-  levelTick: {
-    width: 17,
-    height: 1,
-    backgroundColor: 'rgba(18,24,38,0.58)',
-  },
-  swingPanel: {
-    height: 48,
-    borderRadius: 6,
-    backgroundColor: '#9ebed0',
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-  },
-  swingLabel: {
-    color: '#121826',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '800',
-  },
-  swingValue: {
-    color: '#121826',
-    fontSize: 19,
+  topTitle: {
+    color: '#101827',
+    fontSize: 18,
     lineHeight: 22,
-    fontWeight: '300',
-    letterSpacing: -0.6,
-  },
-  keyPanel: {
-    height: 56,
-    borderRadius: 8,
-    backgroundColor: '#d64a20',
-    paddingHorizontal: 9,
-    justifyContent: 'center',
-  },
-  keyLabel: {
-    color: '#421103',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '800',
-  },
-  keyValue: {
-    color: '#421103',
-    fontSize: 24,
-    lineHeight: 27,
-    fontWeight: '300',
-  },
-  sheetBottom: {
-    flex: 1,
-    minHeight: 290,
-    borderRadius: 22,
-    overflow: 'hidden',
-    backgroundColor: '#d8d1c6',
-  },
-  mosaicBlock: {
-    position: 'absolute',
-    padding: 12,
-    overflow: 'hidden',
-  },
-  mosaicLarge: {
-    left: 0,
-    top: 0,
-    width: '39%',
-    height: '63%',
-  },
-  mosaicTall: {
-    right: 0,
-    top: 0,
-    width: '61%',
-    height: '49%',
-  },
-  mosaicSmall: {
-    left: '39%',
-    top: '49%',
-    width: '43%',
-    height: '15%',
-  },
-  mosaicBottom: {
-    left: 0,
-    bottom: 0,
-    width: '82%',
-    height: '37%',
-  },
-  mosaicSide: {
-    right: 0,
-    bottom: 0,
-    width: '18%',
-    height: '51%',
-  },
-  mosaicKicker: {
-    color: 'rgba(255,255,255,0.70)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  mosaicTitle: {
-    marginTop: 8,
-    color: '#ffffff',
-    fontSize: 19,
-    lineHeight: 23,
     fontWeight: '900',
     letterSpacing: -0.7,
   },
-  mosaicVerticalText: {
-    color: 'rgba(255,255,255,0.76)',
+  topSubtitle: {
+    color: '#8a93a3',
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '500',
   },
-  mosaicSmallText: {
-    color: '#4a3d21',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(219,226,237,0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1b365f',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
-  mosaicBody: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '800',
-  },
-  mosaicSideText: {
-    color: 'rgba(255,255,255,0.76)',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '900',
-    transform: [{ rotate: '90deg' }],
-  },
-  metricsOverlay: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
+  topActions: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 8,
   },
-  metricMini: {
+  backGlyph: {
+    color: '#111827',
+    fontSize: 34,
+    lineHeight: 34,
+    fontWeight: '500',
+    marginTop: -4,
+  },
+  iconButtonActive: {
+    backgroundColor: '#eef4ff',
+    borderColor: '#c5d9f8',
+  },
+  bookmarkGlyph: {
+    width: 14,
+    height: 19,
+    borderWidth: 2,
+    borderColor: '#111827',
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    transform: [{ skewY: '-8deg' }],
+  },
+  bookmarkGlyphActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  moreGlyph: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  moreDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#111827',
+  },
+  cardRail: {
+    gap: 16,
+    alignItems: 'center',
+  },
+  slideFrame: {
+    borderRadius: 30,
+    padding: 1,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    shadowColor: '#1b365f',
+    shadowOpacity: 0.09,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+  },
+  slidePaper: {
     flex: 1,
-    borderRadius: 10,
-    backgroundColor: 'rgba(18,24,38,0.18)',
-    paddingHorizontal: 7,
+    borderRadius: 28,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#eef2f8',
+    paddingHorizontal: 26,
+    paddingTop: 30,
+    paddingBottom: 22,
+  },
+  slideHeader: {
+    gap: 14,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 13,
     paddingVertical: 7,
   },
-  metricMiniLabel: {
-    color: 'rgba(255,255,255,0.70)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '800',
+  badgeText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+    letterSpacing: -0.2,
   },
-  metricMiniValue: {
-    color: '#ffffff',
-    fontSize: 16,
-    lineHeight: 19,
+  slideTitle: {
+    color: '#111827',
+    fontSize: 26,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  hairline: {
+    height: 1,
+    backgroundColor: '#eef1f6',
+    marginTop: 24,
+    marginBottom: 24,
+  },
+  slideBody: {
+    flex: 1,
+  },
+  slideFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  footerMeta: {
+    flex: 1,
+    color: '#8b95a6',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '500',
+  },
+  footerRating: {
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: '900',
   },
-  artworkFrame: {
-    minHeight: 420,
-    padding: spacing.group,
-    overflow: 'hidden',
+  moodContent: {
+    flex: 1,
     justifyContent: 'space-between',
   },
-  artworkDepth: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
-  },
-  artCircleLarge: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    right: -54,
-    top: 36,
-    opacity: 0.23,
-  },
-  artCircleSmall: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    left: -38,
-    bottom: 52,
-    opacity: 0.18,
-  },
-  artLine: {
-    position: 'absolute',
-    width: 140,
-    height: 2,
-    left: 18,
-    top: 86,
-    opacity: 0.4,
-  },
-  artGrid: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 24,
+  ratingRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    opacity: 0.34,
+    alignItems: 'baseline',
+    gap: 5,
   },
-  artGridCell: {
-    width: '33.333%',
-    height: 46,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.22)',
+  bigRating: {
+    fontSize: 58,
+    lineHeight: 64,
+    fontWeight: '900',
+    letterSpacing: -2.4,
+  },
+  ratingMax: {
+    color: '#8b95a6',
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '600',
+  },
+  growthWrap: {
+    height: 185,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    overflow: 'visible',
+  },
+  growthOrb: {
+    position: 'absolute',
+    width: 172,
+    height: 172,
+    borderRadius: 86,
+    bottom: 4,
+  },
+  barGroup: {
+    height: 132,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 13,
+  },
+  growthBar: {
+    width: 34,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  arrowStem: {
+    position: 'absolute',
+    width: 118,
+    height: 16,
+    borderRadius: 999,
+    right: 30,
+    top: 48,
+    opacity: 0.58,
+    transform: [{ rotate: '-34deg' }],
+  },
+  arrowHead: {
+    position: 'absolute',
+    right: 19,
+    top: 34,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 17,
+    borderRightWidth: 17,
+    borderBottomWidth: 27,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    transform: [{ rotate: '55deg' }],
+  },
+  growthDot: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    opacity: 0.22,
+  },
+  quoteBox: {
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 7,
+  },
+  quoteGlyph: {
+    fontSize: 28,
+    lineHeight: 26,
+    fontWeight: '900',
+  },
+  quoteBoxText: {
+    color: '#253044',
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: '500',
+    letterSpacing: -0.45,
+  },
+  signalEmpty: {
+    flex: 1,
+    justifyContent: 'space-around',
+  },
+  signalContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 18,
+  },
+  clipboardOrb: {
+    alignSelf: 'center',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gridMark: {
-    width: 24,
-    height: 8,
-    borderRadius: 999,
+  clipboard: {
+    width: 86,
+    height: 104,
+    borderRadius: 15,
+    borderWidth: 3,
+    backgroundColor: 'rgba(255,255,255,0.42)',
+    paddingTop: 22,
+    paddingHorizontal: 13,
+    gap: 12,
   },
-  artworkTopRow: {
+  clipTop: {
+    position: 'absolute',
+    top: -9,
+    alignSelf: 'center',
+    width: 38,
+    height: 15,
+    borderRadius: 8,
+  },
+  clipLineRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.related,
+    alignItems: 'center',
+    gap: 8,
   },
-  artworkMeta: {
+  checkMark: {
+    width: 13,
+    height: 13,
+    borderRadius: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  clipLine: {
     flex: 1,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: -0.1,
-  },
-  ratingPill: {
+    height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    paddingHorizontal: spacing.related,
-    paddingVertical: 8,
   },
-  ratingPillText: {
+  checkBadge: {
+    position: 'absolute',
+    right: 28,
+    bottom: 28,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 5,
+    borderColor: '#ffffff',
+  },
+  checkBadgeText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 24,
+    lineHeight: 27,
     fontWeight: '900',
   },
-  artworkTitle: {
-    fontSize: 34,
-    lineHeight: 39,
-    fontWeight: '900',
-    letterSpacing: -1.4,
+  emptyMessage: {
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 8,
   },
-  signalBoard: {
-    gap: spacing.group,
+  emptyTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyBody: {
+    color: '#6b7280',
+    fontSize: 13,
+    lineHeight: 21,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  signalList: {
+    gap: 13,
   },
   signalRow: {
     gap: 7,
   },
-  signalRowLabel: {
-    fontSize: 16,
+  signalLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  signalLabel: {
+    color: '#111827',
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+  },
+  signalValue: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+  },
+  signalTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#eef2f7',
+    overflow: 'hidden',
+  },
+  signalFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  fitContent: {
+    flex: 1,
+    justifyContent: 'space-evenly',
+  },
+  fitRow: {
+    minHeight: 88,
+    borderTopWidth: 1,
+    borderTopColor: '#eef1f6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  fitIndexWrap: {
+    width: 34,
+  },
+  fitIndex: {
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
     letterSpacing: -0.4,
   },
-  signalBlocks: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-  signalBlock: {
-    flex: 1,
-    height: 18,
-    borderRadius: 5,
-  },
-  fitBoard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.related,
-    paddingBottom: spacing.tight,
-  },
-  fitFigure: {
-    width: '46%',
+  fitIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
     alignItems: 'center',
-    gap: 7,
+    justifyContent: 'center',
   },
-  fitHead: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-  fitBody: {
-    width: 58,
-    height: 42,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+  fitIconDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   fitText: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: -0.3,
+    flex: 1,
+    color: '#111827',
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '600',
+    letterSpacing: -0.45,
   },
-  keywordBoard: {
+  keywordContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  keywordGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.related,
-    alignContent: 'center',
-    paddingBottom: 8,
+    gap: 10,
   },
-  keywordTile: {
-    borderRadius: 16,
-    paddingHorizontal: spacing.related,
-    paddingVertical: 13,
-    maxWidth: '47%',
+  keywordChip: {
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
   },
-  keywordTileText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '900',
+  keywordText: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '600',
     letterSpacing: -0.35,
   },
-  labelPlate: {
-    paddingHorizontal: spacing.group,
-    paddingTop: spacing.group,
-    paddingBottom: spacing.group,
-    gap: spacing.tight,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+  keywordSource: {
+    minHeight: 78,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
-  labelTitle: {
-    color: '#121826',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  labelBody: {
-    color: '#3f4758',
+  keywordSourceText: {
+    flex: 1,
+    color: '#6b7280',
     fontSize: 14,
     lineHeight: 21,
-    fontWeight: '700',
-    letterSpacing: -0.25,
+    fontWeight: '500',
+    letterSpacing: -0.35,
   },
-  labelMeta: {
-    color: '#85858d',
-    fontSize: 12,
-    fontWeight: '800',
+  searchGlyph: {
+    width: 36,
+    height: 36,
   },
-  dotRail: {
+  searchCircle: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 3,
+  },
+  searchHandle: {
+    position: 'absolute',
+    width: 15,
+    height: 4,
+    borderRadius: 999,
+    left: 21,
+    top: 24,
+    transform: [{ rotate: '45deg' }],
+  },
+  lastQuoteContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 28,
+  },
+  quoteCircle: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lastQuoteGlyph: {
+    fontSize: 48,
+    lineHeight: 48,
+    fontWeight: '900',
+    marginTop: -4,
+  },
+  lastQuoteText: {
+    color: '#111827',
+    fontSize: 21,
+    lineHeight: 32,
+    fontWeight: '600',
+    letterSpacing: -0.7,
+    textAlign: 'center',
+  },
+  pagination: {
+    height: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: '#c3c3c8',
-  },
-  dotActive: {
     width: 8,
     height: 8,
-    backgroundColor: '#121826',
+    borderRadius: 4,
   },
-  bottomActions: {
+  dotActive: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+  },
+  ctaRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: spacing.related,
+    gap: 12,
     paddingHorizontal: spacing.page,
   },
-  actionItem: {
-    alignItems: 'center',
-    gap: spacing.tight,
-    width: 58,
-  },
-  actionIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#eeeeef',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionIconCircleActive: {
-    backgroundColor: '#16499a',
-  },
-  actionLabel: {
-    color: '#8f8f95',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  actionLabelActive: {
-    color: '#16499a',
-  },
-  actionGlyph: {
-    color: '#121826',
-    fontSize: 24,
-    fontWeight: '500',
-    marginTop: -2,
-  },
-  actionGlyphActive: {
-    color: '#ffffff',
-    fontWeight: '900',
-  },
-  linkIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 999,
-    borderWidth: 3,
-    borderColor: '#121826',
-    transform: [{ rotate: '-35deg' }],
-  },
-  playAction: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#767676',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-    marginBottom: 18,
-  },
-  playTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 12,
-    borderBottomWidth: 12,
-    borderLeftWidth: 18,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderLeftColor: '#ffffff',
-    marginLeft: 4,
-  },
-  actionButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-  },
-  actionButtonOutline: {
+  ctaButton: {
     flex: 1,
-    height: 52,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#c8c8cc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-  },
-  actionButtonOutlineText: {
-    color: '#121826',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  actionButtonFill: {
-    flex: 1,
-    height: 52,
-    borderRadius: 999,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButtonFillText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    minHeight: 54,
   },
 });

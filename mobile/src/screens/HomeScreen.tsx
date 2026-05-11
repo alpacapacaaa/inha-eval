@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoursePosterCard } from '../components/CoursePosterCard';
+import { PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  getAllCourses,
   getFamousCourses,
   getGrowthCourses,
   getHoneyGeCourses,
   getVerifiedCourses,
 } from '../lib/api/courses';
-import { getReviewsByCourseId } from '../lib/api/reviews';
 import { AppNavigation } from '../navigation/AppNavigator';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -20,24 +19,48 @@ interface Props {
   navigation: AppNavigation;
 }
 
-type CourseWithPreview = Course & {
-  latestReviewContent?: string;
-};
+type CurationKey = 'growth' | 'famous' | 'honey' | 'verified';
 
-type HomeFeedItem =
-  | { type: 'section'; id: string; title: string; caption: string }
-  | { type: 'row'; id: string; sectionId: string; courses: CourseWithPreview[] };
+type HomeListItem =
+  | { type: 'header'; id: 'header' }
+  | { type: 'course'; id: string; course: Course; index: number };
+
+const curationCards: {
+  id: CurationKey;
+  title: string;
+  caption: string;
+  tone: string;
+  accent: string;
+  reason: string;
+}[] = [
+  { id: 'growth',   title: '이번 학기\n평점이 오른 강의', caption: '업 트렌드',    tone: '#dff6e9', accent: '#35a86b', reason: '평점 상승 중' },
+  { id: 'famous',   title: '학생들이 많이\n담은 강의',     caption: '인기 강의',    tone: '#eee9ff', accent: '#8f6bea', reason: '학생들의 선택' },
+  { id: 'honey',    title: '교양 꿀강의\n모음',            caption: '교양 추천',    tone: '#fff2d8', accent: '#f2a93b', reason: '교양 꿀강의' },
+  { id: 'verified', title: '리뷰 많은\n검증된 강의',       caption: '검증된 강의',  tone: '#ffe8ec', accent: '#e85b73', reason: '검증된 강의' },
+];
+
+const CURATION_FETCH: Record<CurationKey, () => Promise<Course[]>> = {
+  growth:   getGrowthCourses,
+  famous:   getFamousCourses,
+  honey:    getHoneyGeCourses,
+  verified: getVerifiedCourses,
+};
 
 export function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, user } = useAuth();
-  const [recentCourses, setRecentCourses] = useState<CourseWithPreview[]>([]);
+  const flatListRef = useRef<FlatList>(null);
+
   const [famousCourses, setFamousCourses] = useState<Course[]>([]);
   const [honeyCourses, setHoneyCourses] = useState<Course[]>([]);
   const [verifiedCourses, setVerifiedCourses] = useState<Course[]>([]);
   const [growthCourses, setGrowthCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const [selectedCuration, setSelectedCuration] = useState<CurationKey | null>(null);
+  const [curationCourses, setCurationCourses] = useState<Course[]>([]);
+  const [curationLoading, setCurationLoading] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -47,139 +70,127 @@ export function HomeScreen({ navigation }: Props) {
       setErrorMessage('');
 
       try {
-        const [allCourses, famous, honey, verified, growth] = await Promise.all([
-          getAllCourses(),
+        const [famous, honey, verified, growth] = await Promise.all([
           getFamousCourses(),
           getHoneyGeCourses(),
           getVerifiedCourses(),
           getGrowthCourses(),
         ]);
 
-        const recent = allCourses.slice(0, 6);
-        const recentWithPreview = await Promise.all(
-          recent.map(async (course) => {
-            const reviews = await getReviewsByCourseId(course.id);
-            return {
-              ...course,
-              latestReviewContent: reviews[0]?.content,
-            };
-          }),
-        );
+        if (!isActive) return;
 
-        if (!isActive) {
-          return;
-        }
-
-        setRecentCourses(recentWithPreview);
-        setFamousCourses(famous.slice(0, 4));
-        setHoneyCourses(honey.slice(0, 4));
-        setVerifiedCourses(verified.slice(0, 4));
-        setGrowthCourses(growth.slice(0, 4));
+        setFamousCourses(famous.slice(0, 10));
+        setHoneyCourses(honey.slice(0, 10));
+        setVerifiedCourses(verified.slice(0, 10));
+        setGrowthCourses(growth.slice(0, 10));
       } catch (error) {
-        if (!isActive) {
-          return;
-        }
-
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
-        } else {
-          setErrorMessage('메인 피드를 불러오지 못했습니다.');
-        }
+        if (!isActive) return;
+        setErrorMessage(error instanceof Error ? error.message : '메인 피드를 불러오지 못했습니다.');
       } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
+        if (isActive) setIsLoading(false);
       }
     };
 
     loadHighlights();
 
-    return () => {
-      isActive = false;
-    };
+    return () => { isActive = false; };
   }, []);
 
-  const discoveryCourses = useMemo(() => {
+  useEffect(() => {
+    if (!selectedCuration) {
+      setCurationCourses([]);
+      return;
+    }
+
+    let isActive = true;
+    setCurationLoading(true);
+    setCurationCourses([]);
+
+    CURATION_FETCH[selectedCuration]()
+      .then((courses) => { if (isActive) setCurationCourses(courses); })
+      .catch(() => { if (isActive) setCurationCourses([]); })
+      .finally(() => { if (isActive) setCurationLoading(false); });
+
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+
+    return () => { isActive = false; };
+  }, [selectedCuration]);
+
+  const mergedCourses = useMemo(() => {
     const seen = new Set<number>();
-    const merged = [
-      ...recentCourses,
-      ...famousCourses,
-      ...honeyCourses,
-      ...verifiedCourses,
-      ...growthCourses,
-    ].filter((course) => {
-      if (seen.has(course.id)) {
-        return false;
-      }
-      seen.add(course.id);
-      return true;
-    });
+    return [...growthCourses, ...famousCourses, ...honeyCourses, ...verifiedCourses]
+      .filter((course) => {
+        if (seen.has(course.id)) return false;
+        seen.add(course.id);
+        return true;
+      })
+      .sort((a, b) => getCourseWeight(b) - getCourseWeight(a))
+      .slice(0, 12);
+  }, [famousCourses, growthCourses, honeyCourses, verifiedCourses]);
 
-    return merged.slice(0, 18);
-  }, [famousCourses, growthCourses, honeyCourses, recentCourses, verifiedCourses]);
+  const heroCourse = useMemo(() => {
+    if (mergedCourses.length === 0) return undefined;
+    const heroPool = mergedCourses.filter((c) => !isOtherMajor(c, user?.department));
+    const candidates = (heroPool.length > 0 ? heroPool : mergedCourses).slice(0, 5);
+    return candidates[getTodaySeed() % candidates.length];
+  }, [mergedCourses, user?.department]);
 
-  const feedItems = useMemo(
-    () => buildHomeFeed(discoveryCourses, user?.department),
-    [discoveryCourses, user?.department],
+  const heroReason = getAutoReason(heroCourse, growthCourses, honeyCourses, verifiedCourses);
+
+  const userName = isAuthenticated && user ? user.nickname : '게스트';
+
+  const listCourses = selectedCuration
+    ? curationCourses
+    : mergedCourses.filter((c) => c.id !== heroCourse?.id).slice(0, 7);
+
+  const items = useMemo<HomeListItem[]>(
+    () => [
+      { type: 'header', id: 'header' },
+      ...listCourses.map((course, index) => ({
+        type: 'course' as const,
+        id: `course-${course.id}`,
+        course,
+        index,
+      })),
+    ],
+    [listCourses],
   );
-  const userDepartmentLabel = user?.department ?? '학과 미설정';
-  const userName = isAuthenticated && user ? user.nickname : '선웅';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <FlatList
-        data={isLoading || errorMessage ? [] : feedItems}
+        ref={flatListRef}
+        data={isLoading || errorMessage ? [{ type: 'header' as const, id: 'header' as const }] : items}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <>
-            <View style={[styles.collectionHeader, { paddingTop: insets.top + spacing.group }]}>
-              <View style={styles.homeIdentity}>
-                <View style={styles.identityCopy}>
-                  <Text style={styles.issueLabel}>{userName}님</Text>
-                  <Text style={styles.collectionTitle}>인하평</Text>
-                  <Text style={styles.collectionMeta}>@{userName}, {userDepartmentLabel}</Text>
-                </View>
-                <View style={styles.logoMark}>
-                  <Text style={styles.logoText}>인하평</Text>
-                  <View style={styles.logoRule} />
-                </View>
-              </View>
-            </View>
-
-            {isLoading ? <LoadingBlock /> : null}
-            {!isLoading && errorMessage ? <ErrorBlock message={errorMessage} /> : null}
-
-          </>
-        }
-        ListFooterComponent={null}
-        renderItem={({ item, index }) => {
-          if (item.type === 'section') {
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.group }]}
+        renderItem={({ item }) => {
+          if (item.type === 'header') {
             return (
-              <View style={styles.sectionIntro}>
-                <Text style={styles.sectionTitle}>{item.title}</Text>
-                <Text style={styles.sectionCaption}>{item.caption}</Text>
-              </View>
+              <HomeHeader
+                userName={userName}
+                heroCourse={heroCourse}
+                heroReason={heroReason}
+                isLoading={isLoading}
+                errorMessage={errorMessage}
+                selectedCuration={selectedCuration}
+                curationLoading={curationLoading}
+                navigation={navigation}
+                onSelectCuration={(id) =>
+                  setSelectedCuration((prev) => (prev === id ? null : id))
+                }
+              />
             );
           }
 
           return (
-            <View style={styles.galleryRow}>
-              {item.courses.map((course, columnIndex) => {
-                const absoluteIndex = index + columnIndex;
-                return (
-                  <View key={course.id} style={styles.galleryCell}>
-                    <CoursePosterCard
-                      course={course}
-                      preview={course.latestReviewContent}
-                      variant="medium"
-                      index={absoluteIndex}
-                      userDepartment={user?.department}
-                      onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: course.id })}
-                    />
-                  </View>
-                );
-              })}
+            <View style={styles.courseRow}>
+              <CoursePosterCard
+                course={item.course}
+                variant="medium"
+                index={item.index}
+                userDepartment={user?.department}
+                onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: item.course.id })}
+              />
             </View>
           );
         }}
@@ -187,504 +198,448 @@ export function HomeScreen({ navigation }: Props) {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
-        initialNumToRender={6}
-        maxToRenderPerBatch={4}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
         windowSize={7}
       />
     </SafeAreaView>
   );
 }
 
-function LoadingBlock() {
+function HomeHeader({
+  userName,
+  heroCourse,
+  heroReason,
+  isLoading,
+  errorMessage,
+  selectedCuration,
+  curationLoading,
+  navigation,
+  onSelectCuration,
+}: {
+  userName: string;
+  heroCourse?: Course;
+  heroReason: string;
+  isLoading: boolean;
+  errorMessage: string;
+  selectedCuration: CurationKey | null;
+  curationLoading: boolean;
+  navigation: AppNavigation;
+  onSelectCuration: (id: CurationKey) => void;
+}) {
   return (
-    <View style={styles.stateBlock}>
-      <ActivityIndicator color={colors.primary} />
-      <Text style={styles.stateText}>메인 피드를 정리하는 중입니다.</Text>
+    <View style={styles.headerWrap}>
+      <View style={styles.topGreeting}>
+        <View>
+          <Text style={styles.greetingTitle}>안녕하세요, {userName}님</Text>
+          <Text style={styles.greetingSubtitle}>오늘도 좋은 강의로 채워보세요.</Text>
+        </View>
+        <PressableScale style={styles.noticeButton} onPress={() => navigation.navigate({ name: 'Notifications' })}>
+          <BellIcon />
+        </PressableScale>
+      </View>
+
+      {isLoading ? <StatePanel label="추천 강의를 고르는 중입니다." loading /> : null}
+      {!isLoading && errorMessage ? <StatePanel label={errorMessage} error /> : null}
+
+      {!isLoading && !errorMessage && heroCourse ? (
+        <PressableScale
+          style={styles.heroCard}
+          onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: heroCourse.id })}
+        >
+          <View style={styles.heroCopy}>
+            <View style={styles.heroReasonRow}>
+              <Text style={styles.sectionAccent}>오늘의 추천</Text>
+              <View style={styles.reasonBadge}>
+                <Text style={styles.reasonBadgeText}>{heroReason}</Text>
+              </View>
+            </View>
+            <Text style={styles.heroTitle} numberOfLines={2}>{heroCourse.name}</Text>
+            <Text style={styles.heroMeta} numberOfLines={1}>
+              {heroCourse.professor} 교수 · {heroCourse.department}
+            </Text>
+            <View style={styles.heroTags}>
+              {heroCourse.type ? <Text style={styles.heroTag}>{heroCourse.type}</Text> : null}
+              <Text style={styles.heroTag}>후기 {heroCourse.reviewCount}개</Text>
+              <Text style={styles.heroTag}>★ {heroCourse.rating.toFixed(1)}</Text>
+            </View>
+          </View>
+          <View style={styles.heroVisual}>
+            <View style={styles.codeTile}>
+              <Text style={styles.codeTileText}>★</Text>
+            </View>
+            <View style={styles.visualBase} />
+          </View>
+        </PressableScale>
+      ) : null}
+
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>추천 큐레이션</Text>
+        {selectedCuration ? (
+          <PressableScale onPress={() => onSelectCuration(selectedCuration)}>
+            <Text style={styles.resetText}>전체 보기</Text>
+          </PressableScale>
+        ) : null}
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.curationRail}
+      >
+        {curationCards.map((card) => {
+          const isActive = selectedCuration === card.id;
+          return (
+            <PressableScale
+              key={card.id}
+              style={[styles.curationCard, isActive && styles.curationCardActive]}
+              onPress={() => onSelectCuration(card.id)}
+            >
+              <View style={[styles.curationIcon, { backgroundColor: isActive ? `${card.accent}22` : card.tone }]}>
+                <View style={[styles.curationIconGlyph, { backgroundColor: card.accent }]} />
+              </View>
+              <Text style={[styles.curationTitle, isActive && { color: card.accent }]}>{card.title}</Text>
+              <Text style={styles.curationCount}>{card.caption}</Text>
+            </PressableScale>
+          );
+        })}
+      </ScrollView>
+
+      {!isLoading && !errorMessage ? (
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>
+            {selectedCuration
+              ? (curationCards.find((c) => c.id === selectedCuration)?.caption ?? '추천 강의')
+              : '지금 인기 있는 강의'}
+          </Text>
+          {curationLoading ? (
+            <Text style={styles.loadingText}>불러오는 중...</Text>
+          ) : !selectedCuration ? (
+            <PressableScale style={styles.moreButton} onPress={() => navigation.switchTab('Search')}>
+              <Text style={styles.moreText}>더보기</Text>
+              <View style={styles.moreChevron} />
+            </PressableScale>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function ErrorBlock({ message }: { message: string }) {
+function BellIcon() {
   return (
-    <View style={[styles.stateBlock, styles.errorBlock]}>
-      <Text style={styles.errorText}>{message}</Text>
+    <View style={styles.bellIcon}>
+      <View style={styles.bellBody} />
+      <View style={styles.bellClapper} />
     </View>
   );
 }
 
-function buildHomeFeed(courses: CourseWithPreview[], userDepartment?: string): HomeFeedItem[] {
-  const seen = new Set<number>();
-  const items: HomeFeedItem[] = [];
-  const byHotScore = (a: CourseWithPreview, b: CourseWithPreview) => getHotScore(b) - getHotScore(a);
-  const isGeneralCourse = (course: CourseWithPreview) => course.type.includes('교양') || course.department.includes('교양');
-  const isMajorCourse = (course: CourseWithPreview) =>
-    !!userDepartment && course.department === userDepartment && !isGeneralCourse(course);
-  const exactMajorCourses = [...courses].filter(isMajorCourse).sort(byHotScore);
-  const fallbackMajorCourses = [...courses]
-    .filter((course) => !isGeneralCourse(course) && (course.category.includes('전공') || course.type.includes('전공')))
-    .sort(byHotScore);
-  const majorCourses = (exactMajorCourses.length > 0 ? exactMajorCourses : fallbackMajorCourses).slice(0, 4);
-  const hasExactMajor = exactMajorCourses.length > 0;
-
-  const addSection = (id: string, title: string, caption: string, sectionCourses: CourseWithPreview[]) => {
-    const uniqueCourses = sectionCourses.filter((course) => {
-      if (seen.has(course.id)) {
-        return false;
-      }
-      seen.add(course.id);
-      return true;
-    });
-
-    if (uniqueCourses.length === 0) {
-      return;
-    }
-
-    items.push({ type: 'section', id: `section-${id}`, title, caption });
-    for (let index = 0; index < uniqueCourses.length; index += 1) {
-      items.push({
-        type: 'row',
-        id: `row-${id}-${index}`,
-        sectionId: id,
-        courses: uniqueCourses.slice(index, index + 1),
-      });
-    }
-  };
-
-  addSection(
-    'major-hot',
-    hasExactMajor && userDepartment ? `${userDepartment}에서 많이 보는 강의` : '전공에서 많이 보는 강의',
-    hasExactMajor && userDepartment
-      ? '내 학과 기준으로 평점과 리뷰 수가 좋은 강의입니다.'
-      : '학과 데이터가 적을 때는 평점 흐름이 좋은 전공 후보를 먼저 보여줍니다.',
-    majorCourses,
-  );
-
-  addSection(
-    'general-hot',
-    '교양에서 뜨는 강의',
-    '리뷰가 많고 평점 흐름이 좋은 교양 강의를 먼저 모았습니다.',
-    [...courses].filter(isGeneralCourse).sort(byHotScore).slice(0, 4),
-  );
-
-  addSection(
-    'recommended',
-    '추천할 만한 강의',
-    '전공 구분 없이 평점과 강의평 수가 좋은 강의를 골랐습니다.',
-    [...courses].sort(byHotScore).slice(0, 6),
-  );
-
-  return items;
+function isOtherMajor(course: Course, userDepartment?: string): boolean {
+  const isGeneral = course.type.includes('교양') || course.department.includes('교양');
+  if (isGeneral) return false;
+  if (userDepartment && course.department === userDepartment) return false;
+  return true;
 }
 
-function getHotScore(course: Course) {
-  const reviewWeight = Math.min(course.reviewCount, 40) * 1.7;
-  const ratingWeight = course.rating * 16;
-  const workloadPenalty = `${course.workload}`.toLowerCase().includes('hard') ? 3 : 0;
-  return ratingWeight + reviewWeight - workloadPenalty;
+function getTodaySeed() {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function getCourseWeight(course: Course) {
+  return course.rating * 20 + Math.min(course.reviewCount, 200) * 0.7;
+}
+
+function getAutoReason(
+  course: Course | undefined,
+  growthCourses: Course[],
+  honeyCourses: Course[],
+  verifiedCourses: Course[],
+): string {
+  if (!course) return '추천 강의';
+  if (growthCourses.some((c) => c.id === course.id)) return '평점 상승 중';
+  if (honeyCourses.some((c) => c.id === course.id)) return '교양 꿀강의';
+  if (verifiedCourses.some((c) => c.id === course.id)) return '검증된 강의';
+  return '학생들의 선택';
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
+    backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 104,
-    gap: 8,
+    paddingBottom: 112,
   },
-  collectionHeader: {
+  headerWrap: {
+    gap: 26,
+  },
+  topGreeting: {
     paddingHorizontal: spacing.page,
-    paddingBottom: 0,
-    alignItems: 'flex-start',
-    gap: 0,
-  },
-  homeIdentity: {
-    width: '100%',
-    minHeight: 126,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    paddingVertical: 18,
-    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
   },
-  identityCopy: {
-    flex: 1,
-    gap: 5,
-  },
-  logoMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.66)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.86)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    marginLeft: 16,
-  },
-  logoText: {
-    color: '#16499a',
-    fontSize: 15,
-    lineHeight: 19,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  logoRule: {
-    display: 'none',
-  },
-  heroBanner: {
-    width: '100%',
-    minHeight: 236,
-    borderRadius: 32,
-    backgroundColor: '#111827',
-    overflow: 'hidden',
-    padding: 22,
-    justifyContent: 'space-between',
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.16,
-    shadowRadius: 28,
-    elevation: 5,
-  },
-  heroPattern: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroPatternColumn: {
-    position: 'absolute',
-    right: 78,
-    top: -30,
-    width: 82,
-    height: 310,
-    backgroundColor: 'rgba(215,173,77,0.28)',
-    transform: [{ rotate: '16deg' }],
-  },
-  heroPatternColumnSoft: {
-    position: 'absolute',
-    right: -28,
-    top: 44,
-    width: 96,
-    height: 230,
-    backgroundColor: 'rgba(255,255,255,0.09)',
-    transform: [{ rotate: '-11deg' }],
-  },
-  heroPatternCircle: {
-    position: 'absolute',
-    right: 30,
-    bottom: -42,
-    width: 142,
-    height: 142,
-    borderRadius: 71,
-    backgroundColor: 'rgba(22,73,154,0.45)',
-  },
-  heroContent: {
-    maxWidth: 248,
-    gap: 9,
-  },
-  issueLabel: {
-    color: '#16499a',
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  collectionTitle: {
-    color: '#121826',
-    fontSize: 37,
-    lineHeight: 42,
-    fontWeight: '800',
-    letterSpacing: -1.6,
-    textAlign: 'left',
-  },
-  heroMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  collectionMeta: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    color: '#65738a',
-    alignSelf: 'flex-start',
-    fontSize: 13,
-    lineHeight: 13,
-    fontWeight: '600',
-    backgroundColor: 'rgba(255,255,255,0.42)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  heroVisualShelf: {
-    alignSelf: 'flex-end',
-    width: 162,
-    height: 78,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    gap: 10,
-  },
-  heroMiniCardPrimary: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: '#fffdf8',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroMiniScore: {
+  greetingTitle: {
     color: '#111827',
-    fontSize: 22,
-    lineHeight: 24,
+    fontSize: 26,
+    lineHeight: 33,
     fontWeight: '900',
     letterSpacing: -0.9,
   },
-  heroMiniLabel: {
-    color: '#9aa2af',
-    fontSize: 8,
-    lineHeight: 10,
-    fontWeight: '900',
+  greetingSubtitle: {
+    marginTop: 8,
+    color: '#7a8495',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '500',
+    letterSpacing: -0.3,
   },
-  heroMiniStack: {
-    flex: 1,
-    gap: 8,
-  },
-  heroMiniBar: {
-    height: 9,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-  },
-  heroMiniBarShort: {
-    width: '72%',
-  },
-  heroMiniBarSoft: {
-    width: '48%',
-    backgroundColor: 'rgba(215,173,77,0.78)',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  filterBubble: {
-    minWidth: 52,
-    height: 38,
-    borderRadius: 19,
+  noticeButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    paddingHorizontal: 13,
-  },
-  filterBubbleText: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  collectionDescription: {
-    color: '#65738a',
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '700',
-    textAlign: 'left',
-    letterSpacing: -0.45,
-    maxWidth: 320,
-  },
-  editorPick: {
-    marginHorizontal: spacing.page,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(255,255,255,0.94)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
   },
-  editorPickVisual: {
+  bellIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBody: {
+    width: 16,
+    height: 17,
+    borderWidth: 2,
+    borderColor: '#111827',
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+    borderBottomWidth: 1,
+  },
+  bellClapper: {
+    width: 7,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#111827',
+    marginTop: -1,
+  },
+  heroCard: {
+    marginHorizontal: spacing.page,
+    minHeight: 224,
+    borderRadius: 28,
+    padding: 22,
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.96)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.09,
+    shadowRadius: 34,
+  },
+  heroCopy: {
+    flex: 1,
     gap: 13,
   },
-  editorPickPoster: {
-    width: 78,
-    height: 78,
-    borderRadius: 18,
-    backgroundColor: '#d7ad4d',
-  },
-  editorPickInfo: {
-    flex: 1,
-    gap: 7,
-  },
-  editorPickTop: {
+  heroReasonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  editorPickKicker: {
-    color: '#16499a',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  editorPickCount: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    color: '#16499a',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  editorPickTitle: {
-    color: '#121826',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  editorPickMeta: {
-    color: '#65738a',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  editorPickAction: {
-    alignSelf: 'flex-start',
-    overflow: 'hidden',
-    marginTop: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    color: '#16499a',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  shelfSection: {
-    gap: 10,
-  },
-  shelfTitleRow: {
-    paddingHorizontal: spacing.page,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  shelfTitle: {
-    color: '#121826',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  shelfMeta: {
-    color: '#9aa2af',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  shelfRail: {
-    paddingHorizontal: spacing.page,
-    gap: 10,
-  },
-  shelfCard: {
-    width: 186,
-    minHeight: 126,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: 16,
-    gap: 7,
-  },
-  shelfCardActive: {
-    backgroundColor: 'rgba(238,244,255,0.78)',
-    borderColor: 'rgba(22,73,154,0.18)',
-  },
-  shelfKicker: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  shelfCardTitle: {
-    color: '#121826',
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '900',
-    letterSpacing: -0.7,
-  },
-  shelfCardDescription: {
-    color: '#65738a',
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '700',
-  },
-  sectionIntro: {
-    paddingHorizontal: spacing.page,
-    gap: 3,
-    paddingTop: 18,
-    paddingBottom: 4,
-  },
-  sectionTitle: {
-    color: '#121826',
-    fontSize: 19,
-    lineHeight: 23,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-  },
-  sectionCaption: {
-    color: '#7b8492',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  galleryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 2,
-    paddingHorizontal: spacing.page,
-  },
-  galleryCell: {
-    flex: 1,
-  },
-  galleryGhost: {
-    flex: 1,
-  },
-  stateBlock: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    paddingVertical: 22,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    gap: spacing.related,
-  },
-  stateText: {
-    color: '#6b7280',
+  sectionAccent: {
+    color: colors.primary,
     fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '900',
+    letterSpacing: -0.35,
+  },
+  reasonBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    backgroundColor: colors.primarySoft,
+  },
+  reasonBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
     fontWeight: '700',
+    letterSpacing: -0.2,
   },
-  errorBlock: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,59,48,0.16)',
+  heroTitle: {
+    color: '#111827',
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: '900',
+    letterSpacing: -1.2,
   },
-  errorText: {
-    color: colors.danger,
+  heroMeta: {
+    color: '#65738a',
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '500',
+    letterSpacing: -0.35,
+  },
+  heroTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroTag: {
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#e9f1ff',
+    color: '#526783',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '600',
+    letterSpacing: -0.25,
+  },
+  heroVisual: {
+    width: 122,
+    height: 122,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#edf4ff',
+    marginLeft: 18,
+  },
+  codeTile: {
+    width: 64,
+    height: 58,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7da7e8',
+    shadowColor: '#16499a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    zIndex: 2,
+  },
+  codeTileText: {
+    color: '#eaf2ff',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  visualBase: {
+    position: 'absolute',
+    width: 86,
+    height: 22,
+    borderRadius: 10,
+    backgroundColor: '#d9e6f8',
+    bottom: 28,
+  },
+  sectionRow: {
+    paddingHorizontal: spacing.page,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    color: '#111827',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '900',
+    letterSpacing: -0.65,
+  },
+  curationRail: {
+    paddingHorizontal: spacing.page,
+    gap: 14,
+    paddingBottom: 2,
+  },
+  curationCard: {
+    width: 136,
+    minHeight: 158,
+    borderRadius: 20,
+    padding: 18,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.94)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.07,
+    shadowRadius: 24,
+  },
+  curationCardActive: {
+    borderColor: 'rgba(22,73,154,0.22)',
+    shadowOpacity: 0.13,
+  },
+  resetText: {
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '700',
-    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  loadingText: {
+    color: '#9aa5b8',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  curationIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  curationIconGlyph: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+  },
+  curationTitle: {
+    color: '#111827',
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '900',
+    letterSpacing: -0.55,
+  },
+  curationCount: {
+    color: '#7a8495',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+  },
+  moreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  moreText: {
+    color: '#8a96aa',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    letterSpacing: -0.25,
+  },
+  moreChevron: {
+    width: 8,
+    height: 8,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: '#8a96aa',
+    transform: [{ rotate: '45deg' }],
+  },
+  courseRow: {
+    paddingHorizontal: spacing.page,
+    marginBottom: 14,
   },
 });

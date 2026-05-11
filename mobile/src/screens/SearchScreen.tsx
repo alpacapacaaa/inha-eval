@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
-  ActivityIndicator,
   FlatList,
-  Platform,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoursePosterCard } from '../components/CoursePosterCard';
+import { Chip as UiChip, PressableScale, SearchField, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllCourses } from '../lib/api/courses';
 import { AppNavigation } from '../navigation/AppNavigator';
@@ -28,13 +26,13 @@ interface Props {
 
 type CategoryFilter = 'all' | 'general' | 'myMajor' | 'otherMajor';
 type SortOption = 'rating' | 'reviews' | 'name' | 'credits';
-type PanelType = 'all' | 'major' | 'general' | 'sort' | null;
+type PanelType = 'all' | 'major' | 'general' | null;
 
-const categoryTabs: Array<{ key: CategoryFilter; label: string; color: string }> = [
-  { key: 'all', label: '전체', color: '#121826' },
-  { key: 'general', label: '교양', color: '#226d68' },
-  { key: 'myMajor', label: '자기전공', color: '#d84f41' },
-  { key: 'otherMajor', label: '타과전공', color: '#16499a' },
+const categoryTabs: Array<{ key: CategoryFilter; label: string; tone: 'dark' | 'green' | 'red' | 'blue' }> = [
+  { key: 'all', label: '전체', tone: 'dark' },
+  { key: 'general', label: '교양', tone: 'green' },
+  { key: 'myMajor', label: '자기전공', tone: 'red' },
+  { key: 'otherMajor', label: '타과전공', tone: 'blue' },
 ];
 
 const sortOptions: Array<{ key: SortOption; label: string }> = [
@@ -80,6 +78,7 @@ export function SearchScreen({ navigation, route }: Props) {
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [sortBy, setSortBy] = useState<SortOption>('rating');
   const [activePanel, setActivePanel] = useState<PanelType>(null);
+  const [isSortOpen, setIsSortOpen] = useState(false);
   const [majorCredit, setMajorCredit] = useState<number | 'all'>('all');
   const [majorType, setMajorType] = useState<'all' | 'required' | 'elective'>('all');
   const [generalArea, setGeneralArea] = useState('all');
@@ -124,6 +123,8 @@ export function SearchScreen({ navigation, route }: Props) {
     return () => navigation.setTabBarSuppressed(false);
   }, [activePanel, navigation]);
 
+  const trimmedQuery = query.trim();
+
   const filteredCourses = useMemo(() => {
     const lowerQuery = trimmedQuery.toLowerCase();
 
@@ -131,7 +132,8 @@ export function SearchScreen({ navigation, route }: Props) {
       if (trimmedQuery) {
         const matchesKeyword =
           course.name.toLowerCase().includes(lowerQuery) ||
-          course.professor.toLowerCase().includes(lowerQuery);
+          course.professor.toLowerCase().includes(lowerQuery) ||
+          course.department.toLowerCase().includes(lowerQuery);
         if (!matchesKeyword) return false;
       }
 
@@ -185,15 +187,6 @@ export function SearchScreen({ navigation, route }: Props) {
     [filteredCourses, visibleCourseCount],
   );
 
-  const galleryRows = useMemo(() => {
-    const rows: Course[][] = [];
-    for (let index = 0; index < visibleCourses.length; index += 1) {
-      rows.push(visibleCourses.slice(index, index + 1));
-    }
-    return rows;
-  }, [visibleCourses]);
-
-  const trimmedQuery = query.trim();
 
   const handleLoadMore = () => {
     if (isLoading || errorMessage || visibleCourseCount >= filteredCourses.length) {
@@ -203,166 +196,113 @@ export function SearchScreen({ navigation, route }: Props) {
     setVisibleCourseCount((current) => Math.min(current + COURSE_PAGE_SIZE, filteredCourses.length));
   };
 
-  const handleOpenSort = () => {
-    if (Platform.OS === 'ios') {
-      const labels = sortOptions.map((option) => option.label);
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...labels, '취소'],
-          cancelButtonIndex: labels.length,
-          title: '정렬',
-          message: '강의 큐레이션 순서를 선택하세요.',
-          userInterfaceStyle: 'light',
-        },
-        (selectedIndex) => {
-          const nextSort = sortOptions[selectedIndex];
-          if (nextSort) {
-            setSortBy(nextSort.key);
-          }
-        },
-      );
-      return;
+  const handleOpenSort = () => setIsSortOpen(true);
+
+  const activeFilters = useMemo(() => {
+    const items: { label: string; onRemove: () => void }[] = [];
+    const isMajorScope = category === 'all' || category === 'myMajor' || category === 'otherMajor';
+    const isGeneralScope = category === 'all' || category === 'general';
+
+    if (isMajorScope) {
+      if (majorCredit !== 'all') {
+        items.push({ label: `전공 ${majorCredit}학점`, onRemove: () => setMajorCredit('all') });
+      }
+      if (majorType !== 'all') {
+        items.push({ label: majorType === 'required' ? '전필' : '전선', onRemove: () => setMajorType('all') });
+      }
     }
-
-    setActivePanel('sort');
-  };
-
-  const activeFilterChips = useMemo(
-    () =>
-      getActiveFilterChips({
-        category,
-        generalArea,
-        generalCredit,
-        generalPf,
-        majorCredit,
-        majorType,
-      }),
-    [category, generalArea, generalCredit, generalPf, majorCredit, majorType],
-  );
+    if (isGeneralScope) {
+      if (generalArea !== 'all') {
+        items.push({ label: getCompactGeneralAreaLabel(generalArea), onRemove: () => setGeneralArea('all') });
+      }
+      if (generalCredit !== 'all') {
+        items.push({ label: `교양 ${generalCredit}학점`, onRemove: () => setGeneralCredit('all') });
+      }
+      if (generalPf !== 'all') {
+        items.push({ label: generalPf === 'pf' ? 'P/F' : '등급제', onRemove: () => setGeneralPf('all') });
+      }
+    }
+    return items;
+  }, [category, generalArea, generalCredit, generalPf, majorCredit, majorType]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <FlatList
-        data={isLoading || errorMessage ? [] : galleryRows}
-        keyExtractor={(_, index) => `search-row-${index}`}
+        data={isLoading || errorMessage ? [] : visibleCourses}
+        keyExtractor={(item) => `course-${item.id}`}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.related }]}
         ListHeaderComponent={
           <View style={styles.listHeader}>
             <View style={styles.exploreHeader}>
-              <Text style={styles.exploreTitle}>Search the notes</Text>
-              <Text style={styles.exploreMeta}>
-                @{user?.nickname ?? 'inha'} · {user?.department ?? '학과 미설정'}
-              </Text>
+              <Text style={styles.exploreTitle}>강의를 탐색해보세요</Text>
+              <Text style={styles.exploreMeta}>원하는 강의를 검색하고 필터로 찾아보세요.</Text>
             </View>
 
-            <View style={styles.searchDock}>
-              <View style={styles.searchBar}>
-                <View style={styles.searchIcon} />
-                <TextInput
-                  placeholder="강의명, 교수명, 학과"
-                  placeholderTextColor="#a0a0a7"
-                  style={styles.searchInput}
-                  value={query}
-                  onChangeText={setQuery}
-                  onSubmitEditing={() => {}}
-                />
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.searchButton, pressed ? styles.controlPressed : null]}
-                onPress={() => {}}
-              >
-                <Text style={styles.searchButtonText}>검색</Text>
-              </Pressable>
-            </View>
+            <SearchField
+              placeholder="강의명, 교수명, 학과로 검색"
+              value={query}
+              onChangeText={setQuery}
+              rightAccessory={<FunnelIcon />}
+              onRightAccessoryPress={() => setActivePanel(getPanelForCategory(category))}
+            />
 
             <View style={styles.categoryGrid}>
               {categoryTabs.map((tab) => {
                 const active = category === tab.key;
                 return (
-                  <Pressable
+                  <UiChip
                     key={tab.key}
-                    style={[
-                      styles.categoryButton,
-                      active
-                        ? { backgroundColor: tab.color, borderColor: 'rgba(255,255,255,0.22)' }
-                        : styles.categoryButtonInactive,
-                    ]}
+                    label={tab.label}
+                    active={active}
+                    tone={tab.tone}
                     onPress={() => setCategory(tab.key)}
-                  >
-                    <Text style={[styles.categoryButtonText, { color: active ? '#ffffff' : tab.color }]}>
-                      {tab.label}
-                    </Text>
-                  </Pressable>
+                  />
                 );
               })}
             </View>
 
-            <View style={styles.toolRow}>
-              <Pressable
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.toolIconButton, pressed ? styles.controlPressed : null]}
-                onPress={() => setActivePanel(getPanelForCategory(category))}
-              >
-                <FilterGlyph />
-              </Pressable>
-              <View style={styles.activeFilterSlot}>
-                {activeFilterChips.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.activeFilterRail}
-                  >
-                    {activeFilterChips.map((chip) => (
-                      <View key={chip} style={styles.activeFilterChip}>
-                        <Text style={styles.activeFilterChipText}>{chip}</Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                ) : null}
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.toolIconButton, pressed ? styles.controlPressed : null]}
-                onPress={handleOpenSort}
-              >
-                <SortGlyph />
-              </Pressable>
-            </View>
-
             <View style={styles.summaryRow}>
               <Text style={styles.summaryText}>
-                {trimmedQuery ? `"${trimmedQuery}" 검색 결과` : getCategoryLabel(category)} {filteredCourses.length}개
+                {trimmedQuery ? `"${trimmedQuery}" 검색 결과` : '검색 결과'} {filteredCourses.length.toLocaleString()}개
               </Text>
-              <Text style={styles.summaryHint}>
-                {filteredCourses.length > 0 ? `${visibleCourses.length}개 표시 중` : '필터와 정렬을 조합해보세요'}
-              </Text>
+              <PressableScale style={styles.sortButton} onPress={handleOpenSort}>
+                <Text style={styles.summaryHint}>{getSortLabel(sortBy)}</Text>
+                <View style={styles.sortChevron} />
+              </PressableScale>
             </View>
 
+            {activeFilters.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.activeFilterRail}
+              >
+                {activeFilters.map((item) => (
+                  <PressableScale key={item.label} style={styles.activeFilterChip} onPress={item.onRemove}>
+                    <Text style={styles.activeFilterChipText}>{item.label}</Text>
+                    <Text style={styles.activeFilterChipX}>✕</Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
+            ) : null}
+
             {isLoading ? <SearchSkeleton /> : null}
-            {!isLoading && errorMessage ? <StateBlock label={errorMessage} error /> : null}
+            {!isLoading && errorMessage ? <StatePanel label={errorMessage} error /> : null}
             {!isLoading && !errorMessage && filteredCourses.length === 0 ? (
-              <StateBlock label="조건에 맞는 강의가 없어요. 필터를 조금 느슨하게 바꿔볼까요?" />
+              <StatePanel label="조건에 맞는 강의가 없어요. 필터를 조금 느슨하게 바꿔볼까요?" />
             ) : null}
           </View>
         }
-        renderItem={({ item, index: rowIndex }) => (
+        renderItem={({ item, index }) => (
           <View style={styles.galleryRow}>
-            {item.map((course, columnIndex) => {
-              const absoluteIndex = rowIndex + columnIndex;
-              return (
-                <View key={course.id} style={styles.galleryCell}>
-                  <CoursePosterCard
-                    course={course}
-                    variant="medium"
-                    index={absoluteIndex + 4}
-                    userDepartment={user?.department}
-                    onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: course.id })}
-                  />
-                </View>
-              );
-            })}
+            <CoursePosterCard
+              course={item}
+              variant="medium"
+              index={index + 4}
+              userDepartment={user?.department}
+              onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: item.id })}
+            />
           </View>
         )}
         ListFooterComponent={
@@ -392,43 +332,87 @@ export function SearchScreen({ navigation, route }: Props) {
           majorCredit={majorCredit}
           majorType={majorType}
           resultCount={filteredCourses.length}
-          sortBy={sortBy}
           onClose={() => setActivePanel(null)}
           onGeneralAreaChange={setGeneralArea}
           onGeneralCreditChange={setGeneralCredit}
           onGeneralPfChange={setGeneralPf}
           onMajorCreditChange={setMajorCredit}
           onMajorTypeChange={setMajorType}
-          onSortChange={setSortBy}
         />
       ) : null}
+
+      <SortSheet
+        visible={isSortOpen}
+        sortBy={sortBy}
+        onClose={() => setIsSortOpen(false)}
+        onSortChange={(next) => { setSortBy(next); setIsSortOpen(false); }}
+      />
     </SafeAreaView>
   );
 }
 
-function FilterGlyph() {
+function FunnelIcon() {
   return (
-    <View style={styles.filterGlyph}>
-      <View style={styles.filterGlyphLine}>
-        <View style={[styles.filterGlyphDot, { left: 4 }]} />
-      </View>
-      <View style={styles.filterGlyphLine}>
-        <View style={[styles.filterGlyphDot, { right: 5 }]} />
-      </View>
-      <View style={styles.filterGlyphLine}>
-        <View style={[styles.filterGlyphDot, { left: 11 }]} />
-      </View>
+    <View style={styles.funnelWrap}>
+      <View style={[styles.funnelLine, { width: 18 }]} />
+      <View style={[styles.funnelLine, { width: 12 }]} />
+      <View style={[styles.funnelLine, { width: 6 }]} />
     </View>
   );
 }
 
-function SortGlyph() {
+function SortSheet({
+  visible,
+  sortBy,
+  onClose,
+  onSortChange,
+}: {
+  visible: boolean;
+  sortBy: SortOption;
+  onClose: () => void;
+  onSortChange: (sort: SortOption) => void;
+}) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.sortGlyph}>
-      <View style={[styles.sortGlyphBar, { width: 20 }]} />
-      <View style={[styles.sortGlyphBar, { width: 14 }]} />
-      <View style={[styles.sortGlyphBar, { width: 8 }]} />
-    </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.sortOverlay, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <Pressable style={styles.sortScrim} onPress={onClose} />
+
+        {/* 옵션 카드 */}
+        <View style={styles.sortCard}>
+          <View style={styles.sortCardHeader}>
+            <Text style={styles.sortCardTitle}>정렬 기준</Text>
+          </View>
+          {sortOptions.map((option, index) => {
+            const isActive = sortBy === option.key;
+            const isLast = index === sortOptions.length - 1;
+            return (
+              <View key={option.key}>
+                {index > 0 ? <View style={styles.sortDivider} /> : null}
+                <PressableScale style={styles.sortRow} onPress={() => onSortChange(option.key)}>
+                  <Text style={[styles.sortRowText, isActive && styles.sortRowTextActive]}>
+                    {option.label}
+                  </Text>
+                  {isActive ? (
+                    <View style={styles.sortCheckCircle}>
+                      <View style={styles.sortCheckInner} />
+                    </View>
+                  ) : (
+                    <View style={styles.sortCheckEmpty} />
+                  )}
+                </PressableScale>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* 취소 카드 */}
+        <PressableScale style={styles.sortCancelCard} onPress={onClose}>
+          <Text style={styles.sortCancelText}>취소</Text>
+        </PressableScale>
+      </View>
+    </Modal>
   );
 }
 
@@ -440,14 +424,12 @@ function FilterSheet({
   majorCredit,
   majorType,
   resultCount,
-  sortBy,
   onClose,
   onGeneralAreaChange,
   onGeneralCreditChange,
   onGeneralPfChange,
   onMajorCreditChange,
   onMajorTypeChange,
-  onSortChange,
 }: {
   activePanel: Exclude<PanelType, null>;
   generalArea: string;
@@ -456,14 +438,12 @@ function FilterSheet({
   majorCredit: number | 'all';
   majorType: 'all' | 'required' | 'elective';
   resultCount: number;
-  sortBy: SortOption;
   onClose: () => void;
   onGeneralAreaChange: (value: string) => void;
   onGeneralCreditChange: (value: number | 'all') => void;
   onGeneralPfChange: (value: 'all' | 'pf' | 'grade') => void;
   onMajorCreditChange: (value: number | 'all') => void;
   onMajorTypeChange: (value: 'all' | 'required' | 'elective') => void;
-  onSortChange: (value: SortOption) => void;
 }) {
   const showMajorFilters = activePanel === 'all' || activePanel === 'major';
   const showGeneralFilters = activePanel === 'all' || activePanel === 'general';
@@ -495,16 +475,12 @@ function FilterSheet({
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>{getPanelTitle(activePanel)}</Text>
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.sheetCloseButton, pressed ? styles.controlPressed : null]}
-            onPress={onClose}
-          >
+          <PressableScale style={styles.sheetCloseButton} onPress={onClose}>
             <Text style={styles.sheetCloseText}>×</Text>
-          </Pressable>
+          </PressableScale>
         </View>
 
-        {activePanel !== 'sort' ? (
+        <>
           <>
             <SelectedFilterBar summary={selectedSummary} onReset={resetFilters} />
             <FilterBodyScroll>
@@ -590,38 +566,16 @@ function FilterSheet({
               ) : null}
             </FilterBodyScroll>
           </>
-        ) : null}
+        </>
 
-        {activePanel === 'sort' ? (
-          <FilterSection title="정렬 기준">
-            {sortOptions.map((option) => (
-              <Chip
-                key={option.key}
-                label={option.label}
-                active={sortBy === option.key}
-                onPress={() => {
-                  onSortChange(option.key);
-                  onClose();
-                }}
-              />
-            ))}
-          </FilterSection>
-        ) : null}
-
-        {activePanel !== 'sort' ? (
-          <View style={styles.sheetFooter}>
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.sheetApplyButton, pressed ? styles.controlPressed : null]}
-              onPress={onClose}
-            >
-              <Text style={styles.sheetApplyButtonText}>{resultCount.toLocaleString()}개 강의 보기</Text>
-            </Pressable>
-            <Pressable style={styles.sheetResetLine} onPress={resetFilters}>
-              <Text style={styles.sheetResetLineText}>선택 초기화하고 전체 강의 보기</Text>
-            </Pressable>
-          </View>
-        ) : null}
+        <View style={styles.sheetFooter}>
+          <PressableScale style={styles.sheetApplyButton} onPress={onClose}>
+            <Text style={styles.sheetApplyButtonText}>{resultCount.toLocaleString()}개 강의 보기</Text>
+          </PressableScale>
+          <PressableScale style={styles.sheetResetLine} onPress={resetFilters}>
+            <Text style={styles.sheetResetLineText}>선택 초기화하고 전체 강의 보기</Text>
+          </PressableScale>
+        </View>
       </View>
     </View>
   );
@@ -631,9 +585,9 @@ function SelectedFilterBar({ summary, onReset }: { summary: string; onReset: () 
   return (
     <View style={styles.selectedFilterBar}>
       <Text style={styles.selectedFilterText}>{summary}</Text>
-      <Pressable accessibilityRole="button" hitSlop={10} onPress={onReset}>
+      <PressableScale accessibilityRole="button" hitSlop={10} onPress={onReset}>
         <Text style={styles.selectedFilterReset}>초기화</Text>
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
@@ -674,14 +628,13 @@ function FilterCheckItem({
   onPress: () => void;
 }) {
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="checkbox"
       accessibilityState={{ checked: active }}
-      style={({ pressed }) => [
+      style={[
         styles.filterCheckItem,
         active ? styles.filterCheckItemActive : null,
         multiline ? styles.filterCheckItemMultiline : null,
-        pressed ? styles.controlPressed : null,
       ]}
       onPress={onPress}
     >
@@ -694,7 +647,7 @@ function FilterCheckItem({
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -719,38 +672,21 @@ function Chip({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: active ? color : 'rgba(255,255,255,0.58)',
-          borderColor: active ? color : 'rgba(255,255,255,0.78)',
-        },
-        pressed ? styles.controlPressed : null,
-      ]}
-      onPress={onPress}
-    >
-      <Text style={[styles.chipText, { color: active ? '#ffffff' : color }]}>{label}</Text>
-    </Pressable>
+    <UiChip label={label} active={active} tone={getChipTone(color)} onPress={onPress} />
   );
 }
 
-function StateBlock({
-  label,
-  error = false,
-  loading = false,
-}: {
-  label: string;
-  error?: boolean;
-  loading?: boolean;
-}) {
-  return (
-    <View style={[styles.stateBlock, error ? styles.stateBlockError : null]}>
-      {loading ? <ActivityIndicator color={colors.primary} /> : null}
-      <Text style={[styles.stateText, error ? styles.stateTextError : null]}>{label}</Text>
-    </View>
-  );
+function getChipTone(color: string): 'dark' | 'green' | 'red' | 'blue' {
+  if (color === '#226d68') {
+    return 'green';
+  }
+  if (color === '#d84f41') {
+    return 'red';
+  }
+  if (color === '#16499a') {
+    return 'blue';
+  }
+  return 'dark';
 }
 
 function SearchSkeleton() {
@@ -826,6 +762,10 @@ function sortCourses(courses: Course[], sortBy: SortOption) {
   }
 }
 
+function getSortLabel(sortBy: SortOption) {
+  return sortOptions.find((option) => option.key === sortBy)?.label.replace(' 높은순', '순') ?? '정렬';
+}
+
 function getCategoryLabel(category: CategoryFilter) {
   switch (category) {
     case 'general':
@@ -847,8 +787,6 @@ function getPanelTitle(panel: Exclude<PanelType, null>) {
       return '전공 필터';
     case 'general':
       return '교양 필터';
-    case 'sort':
-      return '정렬';
     default:
       return '필터';
   }
@@ -965,31 +903,34 @@ function getCompactGeneralAreaLabel(area: string) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
+    backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 104,
-    gap: 6,
+    paddingBottom: 112,
+    gap: 14,
   },
   listHeader: {
-    gap: 10,
+    gap: 18,
   },
   exploreHeader: {
     paddingHorizontal: spacing.page,
-    gap: 4,
+    gap: 9,
+    paddingTop: 6,
     paddingBottom: 8,
   },
   exploreTitle: {
     color: '#121826',
-    fontSize: 34,
-    lineHeight: 39,
-    fontWeight: '800',
-    letterSpacing: -1.2,
+    fontSize: 28,
+    lineHeight: 35,
+    fontWeight: '900',
+    letterSpacing: -1,
   },
   exploreMeta: {
-    color: '#8c929f',
-    fontSize: 13,
-    fontWeight: '600',
+    color: '#7a8495',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '500',
+    letterSpacing: -0.35,
   },
   searchDock: {
     flexDirection: 'row',
@@ -1053,8 +994,9 @@ const styles = StyleSheet.create({
   categoryGrid: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
-    gap: 8,
+    gap: 10,
     paddingHorizontal: spacing.page,
+    paddingTop: 2,
   },
   categoryButton: {
     minWidth: 0,
@@ -1101,49 +1043,133 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   activeFilterRail: {
-    gap: 6,
-    paddingHorizontal: 2,
+    gap: 8,
+    paddingHorizontal: spacing.page,
     alignItems: 'center',
   },
   activeFilterChip: {
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
-    paddingHorizontal: 10,
+    borderColor: 'rgba(22,73,154,0.18)',
+    paddingHorizontal: 12,
     paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   activeFilterChipText: {
-    color: '#314767',
-    fontSize: 11,
-    fontWeight: '800',
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
     letterSpacing: -0.2,
   },
-  filterGlyph: {
+  activeFilterChipX: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    opacity: 0.7,
+  },
+  // sort sheet
+  sortOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  sortScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+  sortCard: {
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  sortCardHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.10)',
+  },
+  sortCardTitle: {
+    color: '#8a8a8e',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  sortDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.10)',
+    marginHorizontal: 0,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+  },
+  sortRowText: {
+    color: '#1c1c1e',
+    fontSize: 18,
+    fontWeight: '500',
+    letterSpacing: -0.4,
+  },
+  sortRowTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  sortCheckEmpty: {
     width: 22,
-    gap: 4,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: '#c7c7cc',
   },
-  filterGlyphLine: {
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: '#121826',
-    position: 'relative',
+  sortCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  filterGlyphDot: {
-    position: 'absolute',
-    top: -3,
+  sortCheckInner: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#121826',
+    backgroundColor: '#ffffff',
   },
-  sortGlyph: {
+  sortCancelCard: {
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingVertical: 18,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+  },
+  sortCancelText: {
+    color: '#1c1c1e',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  funnelWrap: {
     width: 22,
-    alignItems: 'flex-end',
-    gap: 5,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  sortGlyphBar: {
-    height: 3,
+  funnelLine: {
+    height: 1.8,
     borderRadius: 999,
     backgroundColor: '#121826',
   },
@@ -1153,30 +1179,41 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.related,
     paddingHorizontal: spacing.page,
+    paddingTop: 16,
   },
   summaryText: {
     flex: 1,
     color: '#121826',
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700',
     letterSpacing: -0.4,
   },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   summaryHint: {
-    color: '#96969d',
-    fontSize: 10,
-    fontWeight: '800',
+    color: '#65738a',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+  },
+  sortChevron: {
+    width: 8,
+    height: 8,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: '#8f9caf',
+    transform: [{ rotate: '45deg' }, { translateY: -2 }],
   },
   galleryRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 2,
+    marginBottom: 4,
     paddingHorizontal: spacing.page,
-  },
-  galleryCell: {
-    flex: 1,
-  },
-  galleryCellGhost: {
-    flex: 1,
   },
   loadMoreHint: {
     marginHorizontal: spacing.page,
@@ -1197,7 +1234,8 @@ const styles = StyleSheet.create({
   loadMoreHintText: {
     color: '#7b8492',
     fontSize: 11,
-    fontWeight: '800',
+    lineHeight: 15,
+    fontWeight: '500',
     letterSpacing: -0.2,
   },
   sheetOverlay: {
@@ -1278,13 +1316,13 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#75757b',
     fontSize: 11.5,
-    fontWeight: '800',
+    fontWeight: '600',
     letterSpacing: -0.3,
   },
   selectedFilterReset: {
     color: '#606068',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     textDecorationLine: 'underline',
   },
   filterBody: {
@@ -1358,7 +1396,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#626b78',
     fontSize: 11.2,
-    fontWeight: '800',
+    fontWeight: '600',
     letterSpacing: -0.35,
   },
   filterCheckTextMultiline: {
@@ -1391,7 +1429,7 @@ const styles = StyleSheet.create({
   sheetApplyButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -0.4,
   },
   sheetResetLine: {
@@ -1486,7 +1524,7 @@ const styles = StyleSheet.create({
   skeletonText: {
     color: '#7b8492',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '500',
     textAlign: 'center',
   },
 });

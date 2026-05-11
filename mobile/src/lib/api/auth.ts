@@ -1,4 +1,4 @@
-import { getCurrentUser, saveAccessToken, saveCurrentUser } from '../storage/tokenStorage';
+import { getCurrentUser, saveAccessToken, saveCurrentUser, saveRefreshToken } from '../storage/tokenStorage';
 import { LoginResponse, User } from '../../types/models';
 import { apiRequest } from './client';
 
@@ -9,6 +9,7 @@ interface LoginPayload {
 
 interface AuthResponse {
   accessToken: string;
+  refreshToken?: string;
   nickname: string;
   department?: string;
   points: number;
@@ -36,6 +37,9 @@ async function persistSession(response: AuthResponse, email: string, fallbackDep
   };
 
   await saveAccessToken(response.accessToken);
+  if (response.refreshToken) {
+    await saveRefreshToken(response.refreshToken);
+  }
   await saveCurrentUser(user);
 
   return user;
@@ -61,19 +65,36 @@ export async function signup(payload: SignupPayload): Promise<User> {
 
 export async function updateProfile(payload: ProfileUpdatePayload): Promise<User> {
   const currentUser = await getCurrentUser();
-  const response = await apiRequest<AuthResponse>('/api/auth/profile', {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
+  let response: User | null = null;
+
+  if (payload.nickname !== undefined) {
+    response = await apiRequest<User>('/api/users/me/nickname', {
+      method: 'PATCH',
+      body: JSON.stringify({ nickname: payload.nickname }),
+    });
+  }
+
+  if (payload.department !== undefined) {
+    response = await apiRequest<User>('/api/users/me/department', {
+      method: 'PATCH',
+      body: JSON.stringify({ department: payload.department }),
+    });
+  }
+
+  if (!response) {
+    if (!currentUser) {
+      throw new Error('로그인이 필요합니다.');
+    }
+    return currentUser;
+  }
 
   const nextUser = {
-    email: currentUser?.email ?? '',
-    nickname: response.nickname,
+    email: response.email ?? currentUser?.email ?? '',
+    nickname: response.nickname ?? currentUser?.nickname ?? '',
     department: response.department ?? currentUser?.department,
-    points: response.points,
+    points: response.points ?? currentUser?.points ?? 0,
   };
 
-  await saveAccessToken(response.accessToken);
   await saveCurrentUser(nextUser);
   return nextUser;
 }
@@ -117,5 +138,19 @@ export function resetPassword(phoneNumber: string, newPassword: string, newPassw
   return apiRequest<void>('/api/auth/password/reset', {
     method: 'POST',
     body: JSON.stringify({ phoneNumber, newPassword, newPasswordConfirm }),
+  });
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiRequest<void>('/api/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function deleteAccount(password: string) {
+  return apiRequest<void>('/api/users/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ password }),
   });
 }
