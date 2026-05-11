@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { login as loginRequest, signup as signupRequest, updateProfile as updateProfileRequest } from '../lib/api/auth';
+import { deleteAccount as deleteAccountRequest, login as loginRequest, signup as signupRequest, updateProfile as updateProfileRequest } from '../lib/api/auth';
 import { setUnauthorizedHandler } from '../lib/api/client';
 import { clearAuthTokens, getAccessToken, getCurrentUser } from '../lib/storage/tokenStorage';
 import { User } from '../types/models';
@@ -17,6 +17,7 @@ interface AuthContextValue {
     phoneNumber: string;
   }) => Promise<User>;
   updateProfile: (payload: { nickname?: string; department?: string }) => Promise<User>;
+  deleteAccount: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -76,6 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const updatedUser = await updateProfileRequest(payload);
         setUser(updatedUser);
         return updatedUser;
+      },
+      deleteAccount: async (password: string) => {
+        await deleteAccountRequest(password);
+        await clearAuthTokens();
+        setUser(null);
       },
       signOut: async () => {
         await clearAuthTokens();

@@ -1,4 +1,4 @@
-const simulatorDefaultUrl = 'http://52.63.156.200:8080';
+const simulatorDefaultUrl = 'https://api.inha-eval.com';
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? simulatorDefaultUrl;

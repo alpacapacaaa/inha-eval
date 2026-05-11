@@ -26,15 +26,15 @@ export interface CreateReviewPayload {
   examInfo?: string;
   recommendFor?: string[];
   notRecommendFor?: string[];
-  diffScore?: number;
-  teachingScore?: number;
-  gradScore?: number;
-  workScore?: number;
-  prerequisiteScore?: number;
-  depthScore?: number;
-  timeInvestScore?: number;
-  attScore?: number;
-  pastExamScore?: number;
+  diffScore?: number | null;
+  teachingScore?: number | null;
+  gradScore?: number | null;
+  workScore?: number | null;
+  prerequisiteScore?: number | null;
+  depthScore?: number | null;
+  timeInvestScore?: number | null;
+  attScore?: number | null;
+  pastExamScore?: number | null;
 }
 
 export function createReview(payload: CreateReviewPayload) {

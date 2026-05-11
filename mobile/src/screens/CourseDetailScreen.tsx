@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { getCourseById } from '../lib/api/courses';
 import { getReviewsByCourseId, toggleReviewLike } from '../lib/api/reviews';
@@ -24,10 +23,12 @@ interface Props {
   };
 }
 
-const DETAIL_PALETTES = [
-  { bg: '#082f6f', accent: '#a9caff', surface: '#123f86', card: '#245aa8' },
-  { bg: '#0f1b2d', accent: '#d7b76a', surface: '#1d355e', card: '#2b4d82' },
-  { bg: '#07364c', accent: '#9ed7e8', surface: '#0f526d', card: '#1b6b87' },
+const COMMENT_THEMES = [
+  { accent: '#e8c35d', surface: '#fff9e9', quote: '#f2d77f' },
+  { accent: '#9f8deb', surface: '#f6f2ff', quote: '#b6a7f2' },
+  { accent: '#78bba8', surface: '#f0fbf7', quote: '#91cfbd' },
+  { accent: '#8bb6f1', surface: '#f1f7ff', quote: '#9fc3f5' },
+  { accent: '#ee9fb8', surface: '#fff2f7', quote: '#f2a8bf' },
 ] as const;
 
 export function CourseDetailScreen({ navigation, route }: Props) {
@@ -38,10 +39,11 @@ export function CourseDetailScreen({ navigation, route }: Props) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [sortBy, setSortBy] = useState<'latest' | 'likes' | 'highest' | 'lowest'>('latest');
-  const [selectedSemester, setSelectedSemester] = useState<string>('전체');
+  const [visibleCount, setVisibleCount] = useState(8);
+  const [sortBy, setSortBy] = useState<'latest' | 'rating'>('latest');
+  const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
 
-  const loadCourseDetail = async () => {
+  const loadCourseDetail = async (sort: 'latest' | 'rating' = sortBy) => {
     const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setErrorMessage('');
@@ -49,7 +51,7 @@ export function CourseDetailScreen({ navigation, route }: Props) {
     try {
       const [courseData, reviewData] = await Promise.all([
         getCourseById(route.courseId),
-        getReviewsByCourseId(route.courseId, sortBy),
+        getReviewsByCourseId(route.courseId, sort),
       ]);
 
       if (requestId !== requestIdRef.current) {
@@ -63,11 +65,7 @@ export function CourseDetailScreen({ navigation, route }: Props) {
         return;
       }
 
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage('강의 상세를 불러오지 못했습니다.');
-      }
+      setErrorMessage(error instanceof Error ? error.message : '강의평 상세를 불러오지 못했습니다.');
     } finally {
       if (requestId === requestIdRef.current) {
         setIsLoading(false);
@@ -76,51 +74,20 @@ export function CourseDetailScreen({ navigation, route }: Props) {
   };
 
   useEffect(() => {
-    loadCourseDetail();
-  }, [route.courseId, sortBy]);
+    setVisibleCount(8);
+    loadCourseDetail('latest');
+    setSortBy('latest');
+    setLikedIds(new Set());
+  }, [route.courseId]);
 
-  const semesters = useMemo(
-    () => ['전체', ...Array.from(new Set(reviews.map((review) => review.semester)))],
-    [reviews],
-  );
+  useEffect(() => {
+    setVisibleCount(8);
+    loadCourseDetail(sortBy);
+  }, [sortBy]);
 
-  const filteredReviews = useMemo(
-    () =>
-      selectedSemester === '전체'
-        ? reviews
-        : reviews.filter((review) => review.semester === selectedSemester),
-    [reviews, selectedSemester],
-  );
-
-  const topKeywords = useMemo(() => {
-    const counter = new Map<string, number>();
-    for (const review of reviews) {
-      for (const keyword of review.examKeywords ?? []) {
-        counter.set(keyword, (counter.get(keyword) ?? 0) + 1);
-      }
-    }
-    return [...counter.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([keyword]) => keyword);
-  }, [reviews]);
-
-  const palette = useMemo(() => DETAIL_PALETTES[route.courseId % DETAIL_PALETTES.length], [route.courseId]);
-
-  const insightSentence = useMemo(() => {
-    if (!course) {
-      return '';
-    }
-    const difficultyTone = humanizeMetric(course.difficulty, '난이도');
-    const workloadTone = humanizeMetric(course.workload, '과제량');
-    const ratingTone =
-      course.rating >= 4.3
-        ? '전반 만족도는 꽤 높은 편이에요.'
-        : course.rating >= 3.7
-          ? '취향이 갈리지만 꾸준히 보는 강의예요.'
-          : '수강 전에 리뷰 맥락을 꼭 보고 결정하는 편이 좋아요.';
-    return `${difficultyTone} ${workloadTone} ${ratingTone}`;
-  }, [course]);
+  const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
+  const columns = useMemo(() => splitColumns(visibleReviews), [visibleReviews]);
+  const hasMore = visibleCount < reviews.length;
 
   const handleToggleLike = async (reviewId: number) => {
     if (!isAuthenticated) {
@@ -128,15 +95,20 @@ export function CourseDetailScreen({ navigation, route }: Props) {
       return;
     }
 
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(reviewId)) { next.delete(reviewId); } else { next.add(reviewId); }
+      return next;
+    });
+
     try {
       await toggleReviewLike(reviewId);
-      await loadCourseDetail();
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage('좋아요 처리에 실패했습니다.');
-      }
+    } catch {
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(reviewId)) { next.delete(reviewId); } else { next.add(reviewId); }
+        return next;
+      });
     }
   };
 
@@ -151,705 +123,698 @@ export function CourseDetailScreen({ navigation, route }: Props) {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.loadingSafeArea}>
-        <ActivityIndicator color={colors.primary} />
-        <Text style={styles.loadingText}>강의 장면을 불러오는 중입니다.</Text>
+      <SafeAreaView style={styles.stateSafeArea}>
+        <StatePanel label="학생 코멘트를 불러오는 중입니다." loading />
       </SafeAreaView>
     );
   }
 
   if (errorMessage || !course) {
     return (
-      <SafeAreaView style={styles.loadingSafeArea}>
-        <Text style={styles.errorText}>{errorMessage || '강의 정보를 찾지 못했습니다.'}</Text>
+      <SafeAreaView style={styles.stateSafeArea}>
+        <StatePanel label={errorMessage || '강의 정보를 찾지 못했습니다.'} error />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-      <View pointerEvents="none" style={styles.blueprintBackdrop}>
-        <View style={styles.backdropOrbLarge} />
-      </View>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.related, paddingBottom: 120 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.heroStage, { backgroundColor: palette.bg }]}>
-          <View style={[styles.heroGlowLarge, { backgroundColor: palette.accent }]} />
-          <View style={[styles.heroGlowSmall, { backgroundColor: palette.accent }]} />
+        <View style={styles.topBar}>
+          <PressableScale style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backGlyph}>‹</Text>
+          </PressableScale>
 
-          <View style={styles.heroTopRow}>
-            <Pressable style={styles.ghostRound} onPress={() => navigation.goBack()}>
-              <Text style={styles.ghostRoundText}>‹</Text>
-            </Pressable>
-            <Pressable style={styles.heroActionPill} onPress={handleOpenReviewWrite}>
-              <Text style={styles.heroActionPillText}>강의평 쓰기</Text>
-            </Pressable>
-          </View>
+          <PressableScale style={styles.writeButton} onPress={handleOpenReviewWrite}>
+            <PencilIcon />
+            <Text style={styles.writeButtonText}>강의평 쓰기</Text>
+          </PressableScale>
+        </View>
 
-          <View style={styles.heroBody}>
-            <Text style={[styles.heroDepartment, { color: palette.accent }]}>{course.department}</Text>
-            <Text style={styles.heroTitle}>{course.name}</Text>
-            <Text style={styles.heroSubtitle}>
-              {course.professor} 교수님 · {course.type}
-            </Text>
-          </View>
-
-          <View style={styles.heroFoot}>
-            <View style={[styles.scoreOrb, { backgroundColor: palette.card, borderColor: 'rgba(255,255,255,0.08)' }]}>
-              <Text style={styles.scoreOrbValue}>{course.rating.toFixed(1)}</Text>
-              <Text style={styles.scoreOrbLabel}>평점</Text>
-            </View>
-            <View style={styles.heroInsightBlock}>
-              <Text style={styles.heroInsightLabel}>한눈 요약</Text>
-              <Text style={styles.heroInsightText}>{insightSentence}</Text>
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.courseTitle}>{course.name}</Text>
+            <Text style={styles.professorName}>{course.professor} 교수님</Text>
+            <View style={styles.commentCountRow}>
+              <ChatIcon />
+              <Text style={styles.commentCountText}>
+                학생들이 남긴 코멘트 {course.reviewCount || reviews.length}개
+              </Text>
             </View>
           </View>
+
+          <CommentIllustration />
         </View>
 
-        <View style={styles.metaRibbon}>
-          <MetricTag label="리뷰" value={`${course.reviewCount}`} />
-          <MetricTag label="난이도" value={course.difficulty} />
-          <MetricTag label="과제량" value={course.workload} />
-          <MetricTag label="출결" value={course.attendance} />
+        <View style={styles.divider} />
+
+        <View style={styles.noticeRow}>
+          <SparkleIcon />
+          <Text style={styles.noticeText}>익명으로 작성된 실제 수강생 코멘트입니다.</Text>
         </View>
 
-        <View style={styles.keywordStream}>
-          {(topKeywords.length > 0 ? topKeywords : [course.category, `학점 ${course.grading}`]).map((item) => (
-            <View key={item} style={styles.keywordChip}>
-              <Text style={styles.keywordChipText}>{item}</Text>
-            </View>
-          ))}
+        <View style={styles.sortRow}>
+          <PressableScale
+            style={[styles.sortChip, sortBy === 'latest' ? styles.sortChipActive : null]}
+            onPress={() => setSortBy('latest')}
+          >
+            <Text style={[styles.sortChipText, sortBy === 'latest' ? styles.sortChipTextActive : null]}>최신순</Text>
+          </PressableScale>
+          <PressableScale
+            style={[styles.sortChip, sortBy === 'rating' ? styles.sortChipActive : null]}
+            onPress={() => setSortBy('rating')}
+          >
+            <Text style={[styles.sortChipText, sortBy === 'rating' ? styles.sortChipTextActive : null]}>평점순</Text>
+          </PressableScale>
         </View>
 
-        <View style={styles.filterScene}>
-          <Text style={styles.sceneLabel}>후기 필터</Text>
-          <Text style={styles.sceneTitle}>읽고 싶은 후기만 좁혀보기</Text>
+        {visibleReviews.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>아직 코멘트가 없어요.</Text>
+            <Text style={styles.emptyBody}>첫 번째 강의평을 남기면 이 화면에 카드처럼 전시됩니다.</Text>
+            <PressableScale style={styles.emptyButton} onPress={handleOpenReviewWrite}>
+              <Text style={styles.emptyButtonText}>첫 강의평 쓰기</Text>
+            </PressableScale>
+          </View>
+        ) : (
+          <View style={styles.commentColumns}>
+            {columns.map((column, columnIndex) => (
+              <View key={`column-${columnIndex}`} style={styles.commentColumn}>
+                {column.map(({ review, index }) => (
+                  <CommentCard
+                    key={review.id}
+                    review={review}
+                    index={index}
+                    isLiked={likedIds.has(review.id)}
+                    likeCount={review.likes + (likedIds.has(review.id) ? 1 : 0)}
+                    onBookmark={() => handleToggleLike(review.id)}
+                  />
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>
-            {(['latest', 'likes', 'highest', 'lowest'] as const).map((option) => {
-              const active = sortBy === option;
-              return (
-                <Pressable
-                  key={option}
-                  style={[styles.filterChip, active ? styles.filterChipActive : null]}
-                  onPress={() => setSortBy(option)}
-                >
-                  <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>
-                    {getSortLabel(option)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>
-            {semesters.map((semester) => {
-              const active = selectedSemester === semester;
-              return (
-                <Pressable
-                  key={semester}
-                  style={[styles.filterChip, active ? styles.filterChipActive : null]}
-                  onPress={() => setSelectedSemester(semester)}
-                >
-                  <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>
-                    {semester}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.reviewScene}>
-          <Text style={styles.sceneLabel}>후기 갤러리</Text>
-          <Text style={styles.sceneTitle}>사진을 넘기듯 내려보는 강의평</Text>
-          <Text style={styles.sceneBody}>
-            포인트를 한 번에 읽을 수 있도록 리뷰를 한 장의 작품처럼 크게 보여주고, 필요한 메트릭만 아래에
-            정리했습니다.
-          </Text>
-
-          {filteredReviews.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>아직 등록된 리뷰가 없어요.</Text>
-              <Text style={styles.emptyStateBody}>첫 번째 강의평을 남겨서 이 장면의 시작을 만들어주세요.</Text>
-              <Pressable style={styles.emptyStateButton} onPress={handleOpenReviewWrite}>
-                <Text style={styles.emptyStateButtonText}>첫 강의평 남기기</Text>
-              </Pressable>
-            </View>
-          ) : (
-            filteredReviews.map((review, index) => (
-              <ReviewStoryCard
-                key={review.id}
-                review={review}
-                index={index}
-                onLike={() => handleToggleLike(review.id)}
-              />
-            ))
-          )}
-        </View>
+        {hasMore ? (
+          <PressableScale style={styles.moreButton} onPress={() => setVisibleCount((count) => count + 8)}>
+            <Text style={styles.moreButtonText}>더 많은 코멘트 보기</Text>
+            <ChevronDownIcon />
+          </PressableScale>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function MetricTag({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metricTag}>
-      <Text style={styles.metricTagLabel}>{label}</Text>
-      <Text style={styles.metricTagValue}>{value}</Text>
-    </View>
-  );
-}
-
-function ReviewStoryCard({
+function CommentCard({
   review,
   index,
-  onLike,
+  isLiked,
+  likeCount,
+  onBookmark,
 }: {
   review: Review;
   index: number;
-  onLike: () => void;
+  isLiked: boolean;
+  likeCount: number;
+  onBookmark: () => void;
 }) {
-  const palette = STORY_PALETTES[index % STORY_PALETTES.length];
+  const theme = COMMENT_THEMES[index % COMMENT_THEMES.length];
+  const text = review.oneLineTip || review.content || '아직 상세 코멘트가 없습니다.';
+  const [expanded, setExpanded] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  const filled = Math.round(review.rating);
 
   return (
-    <View style={[styles.storyCard, { backgroundColor: palette.bg }]}>
-      <View style={[styles.storyArtwork, { backgroundColor: palette.canvas }]}>
-        <View style={[styles.storyGlowA, { backgroundColor: palette.accent }]} />
-        <View style={[styles.storyGlowB, { backgroundColor: palette.accent }]} />
-        <View style={styles.storyArtworkTop}>
-          <Text style={[styles.storySemester, { color: palette.meta }]}>{review.semester}</Text>
-          <View style={[styles.storyRatingPill, { backgroundColor: palette.ratingBg }]}>
-            <Text style={[styles.storyRatingValue, { color: palette.ratingText }]}>{review.rating.toFixed(1)}</Text>
-          </View>
-        </View>
-        <Text style={[styles.storyReviewText, { color: palette.text }]}>{review.content}</Text>
+    <View style={[styles.commentCard, { backgroundColor: theme.surface }]}>
+      <View style={styles.ratingRow}>
+        <Text style={[styles.ratingStars, { color: theme.accent }]}>
+          {'★'.repeat(filled)}{'☆'.repeat(Math.max(0, 5 - filled))}
+        </Text>
+        <Text style={[styles.ratingValue, { color: theme.accent }]}>{review.rating.toFixed(1)}</Text>
       </View>
 
-      <View style={styles.storyMetaSection}>
-        <View style={styles.storyMetaTop}>
-          <Text style={styles.storyMetaLine}>
-            {review.professorName} · {review.courseName}
+      <Text style={[styles.quoteMark, { color: theme.quote }]}>”</Text>
+      <Text
+        style={styles.commentText}
+        numberOfLines={expanded ? undefined : 5}
+        onTextLayout={(e) => {
+          if (!expanded) setIsTruncated(e.nativeEvent.lines.length >= 5);
+        }}
+      >
+        {text}
+      </Text>
+
+      {!expanded && isTruncated ? (
+        <PressableScale onPress={() => setExpanded(true)}>
+          <Text style={[styles.expandText, { color: theme.accent }]}>더 보기</Text>
+        </PressableScale>
+      ) : null}
+
+      <View style={styles.cardBottom}>
+        <PressableScale
+          style={[styles.likeButton, isLiked ? styles.likeButtonActive : null]}
+          onPress={onBookmark}
+        >
+          <HeartIcon color={isLiked ? theme.accent : '#c8d2e0'} />
+          <Text style={[styles.likeCount, { color: isLiked ? theme.accent : '#b8c4d4' }]}>
+            {likeCount}
           </Text>
-          <Pressable style={styles.storyLikeButton} onPress={onLike}>
-            <Text style={styles.storyLikeButtonText}>도움 {review.likes}</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.storyMetricRow}>
-          <StoryMetric label="난이도" value={review.difficulty} />
-          <StoryMetric label="과제" value={review.workload} />
-          <StoryMetric label="출결" value={review.attendance} />
-        </View>
-
-        {(review.examKeywords?.length ?? 0) > 0 ? (
-          <View style={styles.storyTagRow}>
-            {review.examKeywords?.slice(0, 4).map((keyword) => (
-              <View key={`${review.id}-${keyword}`} style={styles.storyTagChip}>
-                <Text style={styles.storyTagChipText}>{keyword}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        </PressableScale>
       </View>
     </View>
   );
 }
 
-function StoryMetric({ label, value }: { label: string; value: string }) {
+function splitColumns(reviews: Review[]) {
+  const columns: Array<Array<{ review: Review; index: number }>> = [[], []];
+
+  reviews.forEach((review, index) => {
+    columns[index % 2].push({ review, index });
+  });
+
+  return columns;
+}
+
+function PencilIcon() {
   return (
-    <View style={styles.storyMetric}>
-      <Text style={styles.storyMetricLabel}>{label}</Text>
-      <Text style={styles.storyMetricValue}>{value}</Text>
+    <View style={styles.pencilIcon}>
+      <View style={styles.pencilBody} />
+      <View style={styles.pencilTip} />
     </View>
   );
 }
 
-const STORY_PALETTES = [
-  {
-    bg: '#ffffff',
-    canvas: '#e7f0ff',
-    text: '#0f1b2d',
-    meta: '#16499a',
-    accent: 'rgba(22,73,154,0.18)',
-    ratingBg: 'rgba(255,255,255,0.7)',
-    ratingText: '#16499a',
-  },
-  {
-    bg: '#ffffff',
-    canvas: '#082f6f',
-    text: '#ffffff',
-    meta: 'rgba(255,255,255,0.72)',
-    accent: 'rgba(169,202,255,0.22)',
-    ratingBg: 'rgba(255,255,255,0.12)',
-    ratingText: '#ffffff',
-  },
-  {
-    bg: '#ffffff',
-    canvas: '#0f1b2d',
-    text: '#f6f9ff',
-    meta: 'rgba(215,183,106,0.78)',
-    accent: 'rgba(215,183,106,0.18)',
-    ratingBg: 'rgba(255,255,255,0.10)',
-    ratingText: '#d7b76a',
-  },
-] as const;
-
-function humanizeMetric(value: string, type: '난이도' | '과제량') {
-  const normalized = value.toLowerCase();
-
-  if (normalized.includes('hard') || normalized.includes('strict') || normalized.includes('heavy') || normalized.includes('높')) {
-    return type === '난이도' ? '체감 난이도는 다소 높은 편이고,' : '과제량은 꽤 있는 편이며,';
-  }
-
-  if (normalized.includes('easy') || normalized.includes('light') || normalized.includes('flex') || normalized.includes('낮')) {
-    return type === '난이도' ? '체감 난이도는 비교적 편안한 편이고,' : '과제량은 비교적 가벼운 편이며,';
-  }
-
-  return type === '난이도' ? '체감 난이도는 무난한 편이고,' : '과제량은 보통 수준이며,';
+function ChatIcon() {
+  return (
+    <View style={styles.chatIcon}>
+      <View style={styles.chatDot} />
+      <View style={styles.chatDot} />
+      <View style={styles.chatDot} />
+    </View>
+  );
 }
 
-function getSortLabel(sort: 'latest' | 'likes' | 'highest' | 'lowest') {
-  switch (sort) {
-    case 'latest':
-      return '최신순';
-    case 'likes':
-      return '추천순';
-    case 'highest':
-      return '평점 높은순';
-    case 'lowest':
-      return '평점 낮은순';
-    default:
-      return sort;
-  }
+function SparkleIcon() {
+  return (
+    <View style={styles.sparkleIcon}>
+      <View style={styles.sparkleVertical} />
+      <View style={styles.sparkleHorizontal} />
+    </View>
+  );
+}
+
+function CommentIllustration() {
+  return (
+    <View style={styles.heroIllustration}>
+      <View style={styles.browserCard}>
+        <View style={styles.browserTop} />
+        <View style={styles.browserLineShort} />
+        <View style={styles.browserLineLong} />
+      </View>
+      <View style={styles.chatBubbleLarge}>
+        <View style={styles.heroDot} />
+        <View style={styles.heroDot} />
+        <View style={styles.heroDot} />
+      </View>
+      <View style={styles.illustrationSparkleA} />
+      <View style={styles.illustrationSparkleB} />
+    </View>
+  );
+}
+
+function HeartIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.heartIcon}>
+      <View style={[styles.heartLeft, { backgroundColor: color }]} />
+      <View style={[styles.heartRight, { backgroundColor: color }]} />
+      <View style={[styles.heartBottom, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function ChevronDownIcon() {
+  return <Text style={styles.chevronDown}>⌄</Text>;
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
+    backgroundColor: colors.background,
   },
-  blueprintBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  backdropOrbLarge: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(22,73,154,0.10)',
-    right: -94,
-    top: 180,
-  },
-  loadingSafeArea: {
+  stateSafeArea: {
     flex: 1,
-    backgroundColor: '#edf2fb',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.related,
     paddingHorizontal: spacing.page,
-  },
-  loadingText: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
   },
   content: {
     paddingHorizontal: spacing.page,
-    gap: spacing.section,
+    gap: 22,
   },
-  heroStage: {
-    borderRadius: 26,
-    overflow: 'hidden',
-    padding: spacing.group,
-    gap: spacing.group,
-    shadowColor: '#0e1c36',
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
-  },
-  heroGlowLarge: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    right: -40,
-    top: -30,
-    opacity: 0.24,
-  },
-  heroGlowSmall: {
-    position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 999,
-    left: -30,
-    bottom: -20,
-    opacity: 0.18,
-  },
-  heroTopRow: {
+  topBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  ghostRound: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  ghostRoundText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: -2,
-  },
-  heroActionPill: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.20)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  heroActionPillText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  heroBody: {
-    gap: spacing.tight,
-  },
-  heroDepartment: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  heroTitle: {
-    color: '#ffffff',
-    fontSize: 28,
-    lineHeight: 31,
-    fontWeight: '900',
-    letterSpacing: -1.1,
-  },
-  heroSubtitle: {
-    color: 'rgba(255,255,255,0.74)',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
-  heroFoot: {
-    flexDirection: 'row',
-    gap: spacing.related,
-    alignItems: 'flex-end',
-  },
-  scoreOrb: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    borderWidth: 1,
+  backButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.86)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.09,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
   },
-  scoreOrbValue: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -1,
+  backGlyph: {
+    color: '#101827',
+    fontSize: 42,
+    lineHeight: 42,
+    fontWeight: '500',
+    marginTop: -5,
+    marginLeft: -2,
   },
-  scoreOrbLabel: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  heroInsightBlock: {
-    flex: 1,
-    gap: 6,
-  },
-  heroInsightLabel: {
-    color: 'rgba(255,255,255,0.62)',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  heroInsightText: {
-    color: '#ffffff',
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  metaRibbon: {
+  writeButton: {
+    minHeight: 54,
+    borderRadius: 27,
+    backgroundColor: '#101827',
+    paddingHorizontal: 20,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.tight,
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#101827',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
   },
-  metricTag: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
-    gap: 2,
-  },
-  metricTagLabel: {
-    color: '#8090ad',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  metricTagValue: {
-    color: '#101621',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  keywordStream: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.tight,
-  },
-  keywordChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  keywordChipText: {
-    color: '#2759c8',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  filterScene: {
-    gap: spacing.related,
-  },
-  sceneLabel: {
-    color: '#4d78d0',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  sceneTitle: {
-    color: '#141924',
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '900',
-    letterSpacing: -0.7,
-  },
-  sceneBody: {
-    color: '#6b7280',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
-  filterRail: {
-    gap: spacing.related,
-    paddingRight: 18,
-  },
-  filterChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  filterChipActive: {
-    backgroundColor: '#16499a',
-    borderColor: '#16499a',
-  },
-  filterChipText: {
-    color: '#46617f',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  filterChipTextActive: {
+  writeButtonText: {
     color: '#ffffff',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '900',
+    letterSpacing: -0.35,
   },
-  reviewScene: {
+  pencilIcon: {
+    width: 20,
+    height: 20,
+    transform: [{ rotate: '-38deg' }],
+  },
+  pencilBody: {
+    position: 'absolute',
+    left: 7,
+    top: 1,
+    width: 7,
+    height: 16,
+    borderRadius: 2,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  pencilTip: {
+    position: 'absolute',
+    left: 7,
+    bottom: -1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#ffffff',
+  },
+  hero: {
+    minHeight: 188,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.group,
   },
-  emptyState: {
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: 22,
-    gap: spacing.related,
-    alignItems: 'flex-start',
+  heroCopy: {
+    flex: 1,
+    gap: 14,
   },
-  emptyStateTitle: {
-    color: '#141924',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.6,
+  courseTitle: {
+    color: '#101827',
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: '900',
+    letterSpacing: -1.6,
   },
-  emptyStateBody: {
-    color: '#6b7280',
-    fontSize: 14,
+  professorName: {
+    color: '#50627d',
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '600',
+    letterSpacing: -0.45,
+  },
+  commentCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+  },
+  commentCountText: {
+    color: '#586a86',
+    fontSize: 15,
     lineHeight: 20,
     fontWeight: '600',
+    letterSpacing: -0.35,
   },
-  emptyStateButton: {
-    borderRadius: 18,
-    backgroundColor: 'rgba(13,62,169,0.92)',
+  chatIcon: {
+    width: 25,
+    height: 21,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#718098',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  chatDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#718098',
+  },
+  heroIllustration: {
+    width: 168,
+    height: 150,
+    position: 'relative',
+  },
+  browserCard: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 106,
+    height: 82,
+    borderRadius: 10,
+    backgroundColor: 'rgba(226,236,255,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderColor: 'rgba(151,183,246,0.38)',
+    transform: [{ rotate: '4deg' }],
+  },
+  browserTop: {
+    height: 18,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    backgroundColor: 'rgba(104,145,230,0.28)',
+  },
+  browserLineShort: {
+    width: 38,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(104,145,230,0.20)',
+    marginTop: 17,
+    marginLeft: 18,
+  },
+  browserLineLong: {
+    width: 58,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(104,145,230,0.16)',
+    marginTop: 10,
+    marginLeft: 18,
+  },
+  chatBubbleLarge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 18,
+    width: 88,
+    height: 66,
+    borderRadius: 18,
+    backgroundColor: '#7ea8ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    shadowColor: '#2f6edb',
+    shadowOpacity: 0.20,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  heroDot: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.84)',
+  },
+  illustrationSparkleA: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    right: 8,
+    bottom: 26,
+    backgroundColor: '#a9c4ff',
+  },
+  illustrationSparkleB: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    left: 42,
+    top: 18,
+    backgroundColor: '#c3d5ff',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#dce4f0',
+  },
+  noticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sparkleIcon: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sparkleVertical: {
+    position: 'absolute',
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: '#d6c486',
+  },
+  sparkleHorizontal: {
+    position: 'absolute',
+    width: 18,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d6c486',
+  },
+  noticeText: {
+    flex: 1,
+    color: '#8b96a8',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  commentColumns: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  commentColumn: {
+    flex: 1,
+    gap: 14,
+  },
+  commentCard: {
+    minHeight: 208,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 22,
+    paddingBottom: 18,
+    gap: 14,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)',
+  },
+  quoteMark: {
+    fontSize: 38,
+    lineHeight: 31,
+    fontWeight: '900',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ratingStars: {
+    fontSize: 13,
+    letterSpacing: 1,
+  },
+  ratingValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  commentText: {
+    color: '#1c2a3a',
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '500',
+    letterSpacing: -0.3,
+  },
+  expandText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginTop: -4,
+  },
+  cardBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  likeButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+  },
+  likeCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: -6,
+  },
+  sortChip: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)',
+  },
+  sortChipActive: {
+    backgroundColor: '#101827',
+    borderColor: '#101827',
+  },
+  sortChipText: {
+    color: '#65738a',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  sortChipTextActive: {
+    color: '#ffffff',
+  },
+  heartIcon: {
+    width: 20,
+    height: 18,
+    position: 'relative',
+  },
+  heartLeft: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    left: 0,
+    top: 0,
+  },
+  heartRight: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    right: 0,
+    top: 0,
+  },
+  heartBottom: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    left: 3,
+    top: 5,
+    transform: [{ rotate: '45deg' }],
+  },
+  moreButton: {
+    minHeight: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,233,244,0.96)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  moreButtonText: {
+    color: '#51627d',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '600',
+    letterSpacing: -0.35,
+  },
+  chevronDown: {
+    color: '#51627d',
+    fontSize: 28,
+    lineHeight: 28,
+    fontWeight: '500',
+    marginTop: -8,
+  },
+  emptyCard: {
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,233,244,0.96)',
+    padding: spacing.page,
+    gap: spacing.related,
+  },
+  emptyTitle: {
+    color: '#101827',
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+  },
+  emptyBody: {
+    color: '#6b7280',
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '700',
+  },
+  emptyButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#101827',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  emptyStateButtonText: {
+  emptyButtonText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '800',
-  },
-  storyCard: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    overflow: 'hidden',
-    shadowColor: '#16499a',
-    shadowOpacity: 0.09,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 5,
-  },
-  storyArtwork: {
-    minHeight: 300,
-    paddingHorizontal: spacing.group,
-    paddingTop: spacing.group,
-    paddingBottom: spacing.group,
-    justifyContent: 'space-between',
-    overflow: 'hidden',
-  },
-  storyGlowA: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    right: -34,
-    top: -20,
-  },
-  storyGlowB: {
-    position: 'absolute',
-    width: 130,
-    height: 130,
-    borderRadius: 999,
-    left: -24,
-    bottom: -10,
-  },
-  storyArtworkTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  storySemester: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  storyRatingPill: {
-    borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-  },
-  storyRatingValue: {
-    fontSize: 15,
+    lineHeight: 16,
     fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  storyReviewText: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  storyMetaSection: {
-    paddingHorizontal: spacing.group,
-    paddingTop: spacing.group,
-    paddingBottom: spacing.group,
-    gap: spacing.related,
-  },
-  storyMetaTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.related,
-    alignItems: 'center',
-  },
-  storyMetaLine: {
-    flex: 1,
-    color: '#576780',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  storyLikeButton: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.74)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  storyLikeButtonText: {
-    color: '#0d3ea9',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  storyMetricRow: {
-    flexDirection: 'row',
-    gap: spacing.tight,
-  },
-  storyMetric: {
-    flex: 1,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.48)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.70)',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    gap: 3,
-  },
-  storyMetricLabel: {
-    color: '#8090ad',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  storyMetricValue: {
-    color: '#131722',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  storyTagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.tight,
-  },
-  storyTagChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.48)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.70)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  storyTagChipText: {
-    color: '#355ca8',
-    fontSize: 12,
-    fontWeight: '800',
   },
 });

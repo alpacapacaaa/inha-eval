@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PressableScale } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { CourseCollectionScreen } from '../screens/CourseCollectionScreen';
 import { CourseDetailScreen } from '../screens/CourseDetailScreen';
@@ -9,6 +10,12 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { MyPageScreen } from '../screens/MyPageScreen';
 import { ReviewWriteScreen } from '../screens/ReviewWriteScreen';
 import { SearchScreen } from '../screens/SearchScreen';
+import { CartFullScreen } from '../screens/CartFullScreen';
+import { InquiryScreen } from '../screens/InquiryScreen';
+import { PointHistoryScreen } from '../screens/PointHistoryScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { TimetableFullScreen } from '../screens/TimetableFullScreen';
 import { TimetableScreen } from '../screens/TimetableScreen';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -27,16 +34,27 @@ export interface AppNavigation {
 }
 
 export function AppNavigator() {
-  const { isHydrating } = useAuth();
+  const { isAuthenticated, isHydrating } = useAuth();
   const insets = useSafeAreaInsets();
-  const [history, setHistory] = useState<AppRoute[]>([{ name: 'Home' }]);
+  const [history, setHistory] = useState<AppRoute[]>([{ name: 'Login' }]);
   const tabBarTranslateY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
   const isTabBarVisible = useRef(true);
+  const didResolveInitialAuth = useRef(false);
   const [isTabBarSuppressed, setIsTabBarSuppressed] = useState(false);
 
   const currentRoute = history[history.length - 1];
   const isTabRoute = TAB_ROUTES.includes(currentRoute.name as (typeof TAB_ROUTES)[number]);
+
+  useEffect(() => {
+    if (!isHydrating && !didResolveInitialAuth.current) {
+      didResolveInitialAuth.current = true;
+
+      if (isAuthenticated && currentRoute.name === 'Login') {
+        setHistory([{ name: 'Home' }]);
+      }
+    }
+  }, [currentRoute.name, isAuthenticated, isHydrating]);
 
   const animateTabBar = (visible: boolean) => {
     if (isTabBarVisible.current === visible) {
@@ -127,7 +145,7 @@ export function AppNavigator() {
               const isActive = currentRoute.name === tabName;
 
               return (
-                <Pressable
+                <PressableScale
                   key={tabName}
                   style={[styles.tabButton, isActive ? styles.tabButtonActive : null]}
                   onPress={() => navigation.switchTab(tabName)}
@@ -138,7 +156,7 @@ export function AppNavigator() {
                   <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]}>
                     {getTabLabel(tabName)}
                   </Text>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
@@ -166,6 +184,18 @@ function renderRoute(route: AppRoute, navigation: AppNavigation) {
       return <ReviewWriteScreen navigation={navigation} route={route} />;
     case 'MyPage':
       return <MyPageScreen navigation={navigation} />;
+    case 'TimetableFull':
+      return <TimetableFullScreen navigation={navigation} />;
+    case 'CartFull':
+      return <CartFullScreen navigation={navigation} />;
+    case 'Notifications':
+      return <NotificationsScreen navigation={navigation} />;
+    case 'Settings':
+      return <SettingsScreen navigation={navigation} route={route} />;
+    case 'Inquiry':
+      return <InquiryScreen navigation={navigation} />;
+    case 'PointHistory':
+      return <PointHistoryScreen navigation={navigation} />;
     default:
       return null;
   }
@@ -214,8 +244,12 @@ function TabIcon({
     case 'Timetable':
       return (
         <View style={styles.iconFrame}>
-          <View style={[styles.bagBody, tintStyle]} />
-          <View style={[styles.bagHandle, isActive ? styles.bagHandleActive : styles.bagHandleInactive]} />
+          <View style={[styles.calBody, tintStyle]} />
+          <View style={[styles.calTopBar, tintStyle]} />
+          <View style={[styles.calGridDotA, tintStyle]} />
+          <View style={[styles.calGridDotB, tintStyle]} />
+          <View style={[styles.calGridDotC, tintStyle]} />
+          <View style={[styles.calGridDotD, tintStyle]} />
         </View>
       );
     case 'MyPage':
@@ -367,31 +401,53 @@ const styles = StyleSheet.create({
     bottom: 4,
     transform: [{ rotate: '45deg' }],
   },
-  bagBody: {
+  calBody: {
     position: 'absolute',
-    width: 14,
-    height: 12,
-    bottom: 3,
-    borderRadius: 4,
-  },
-  bagHandle: {
-    position: 'absolute',
-    width: 10,
-    height: 7,
-    top: 2,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
+    width: 16,
+    height: 13,
+    bottom: 2,
+    borderRadius: 3,
+    borderWidth: 2,
     backgroundColor: 'transparent',
   },
-  bagHandleInactive: {
-    borderColor: '#7f92a9',
+  calTopBar: {
+    position: 'absolute',
+    width: 16,
+    height: 4,
+    top: 3,
+    borderRadius: 2,
   },
-  bagHandleActive: {
-    borderColor: colors.primaryDeep,
+  calGridDotA: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 1,
+    left: 5,
+    bottom: 8,
+  },
+  calGridDotB: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 1,
+    right: 5,
+    bottom: 8,
+  },
+  calGridDotC: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 1,
+    left: 5,
+    bottom: 4,
+  },
+  calGridDotD: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 1,
+    right: 5,
+    bottom: 4,
   },
   profileHead: {
     position: 'absolute',

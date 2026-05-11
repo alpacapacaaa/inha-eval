@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { PressableScale } from './ui';
 import { colors } from '../theme/colors';
 
 interface ListRowProps {
@@ -37,13 +38,13 @@ export function ListRow({
 
   if (onPress) {
     return (
-      <Pressable
+      <PressableScale
         accessibilityRole="button"
-        style={({ pressed }) => [styles.pressable, pressed ? styles.pressablePressed : null]}
+        style={styles.pressable}
         onPress={onPress}
       >
         {content}
-      </Pressable>
+      </PressableScale>
     );
   }
 
@@ -53,10 +54,6 @@ export function ListRow({
 const styles = StyleSheet.create({
   pressable: {
     backgroundColor: 'rgba(255,255,255,0.42)',
-  },
-  pressablePressed: {
-    opacity: 0.76,
-    transform: [{ scale: 0.996 }],
   },
   row: {
     flexDirection: 'row',

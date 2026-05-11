@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { getPointHistory } from '../lib/api/points';
-import { deleteReview, getMyReviews } from '../lib/api/reviews';
-import { departments } from '../lib/departments';
+import { getMyReviews } from '../lib/api/reviews';
+import { TIMETABLE_BY_COURSE_ID, TIMETABLE_DAYS, TimetableSlot } from '../lib/timetableData';
+import { loadSelectedTimetableIds, loadTimetableCartIds } from '../lib/storage/timetableStorage';
 import { AppNavigation } from '../navigation/AppNavigator';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -22,27 +22,29 @@ interface Props {
   navigation: AppNavigation;
 }
 
-const archiveFilters = [
-  { key: 'reviews', label: '리뷰', color: '#121826' },
-  { key: 'points', label: '포인트', color: '#16499a' },
-  { key: 'profile', label: '계정', color: '#226d68' },
+const FAVORITES = [
+  { key: 'saved', label: '담은 강의', tone: '#2f6edb' },
+  { key: 'reviews', label: '작성한 리뷰', tone: '#39aa78' },
+  { key: 'questions', label: '문의/답변', tone: '#a66be4' },
+  { key: 'points', label: '포인트 내역', tone: '#f2b94d' },
 ] as const;
 
 export function MyPageScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { user, signOut, updateProfile } = useAuth();
+  const { user, signOut } = useAuth();
   const [pointHistory, setPointHistory] = useState<PointHistoryItem[]>([]);
   const [myReviews, setMyReviews] = useState<Review[]>([]);
-  const [activeFilter, setActiveFilter] = useState<(typeof archiveFilters)[number]['key']>('reviews');
+  const [selectedTimetableIds, setSelectedTimetableIds] = useState<string[]>([]);
+  const [cartIds, setCartIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState(user?.department ?? '');
-  const [isUpdatingDepartment, setIsUpdatingDepartment] = useState(false);
 
   const loadMyData = async () => {
     if (!user) {
       setPointHistory([]);
       setMyReviews([]);
+      setSelectedTimetableIds([]);
+      setCartIds([]);
       return;
     }
 
@@ -50,9 +52,16 @@ export function MyPageScreen({ navigation }: Props) {
     setErrorMessage('');
 
     try {
-      const [history, reviews] = await Promise.all([getPointHistory(), getMyReviews()]);
+      const [history, reviews, selectedIds, storedCartIds] = await Promise.all([
+        getPointHistory(),
+        getMyReviews(),
+        loadSelectedTimetableIds(),
+        loadTimetableCartIds(),
+      ]);
       setPointHistory(history);
       setMyReviews(reviews);
+      setSelectedTimetableIds(selectedIds);
+      setCartIds(storedCartIds);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '내 정보를 불러오지 못했습니다.');
     } finally {
@@ -64,162 +73,173 @@ export function MyPageScreen({ navigation }: Props) {
     loadMyData();
   }, [user]);
 
-  useEffect(() => {
-    setSelectedDepartment(user?.department ?? '');
-  }, [user?.department]);
+  const selectedSlots = useMemo(
+    () => selectedTimetableIds.flatMap((id) => TIMETABLE_BY_COURSE_ID[id] ?? []),
+    [selectedTimetableIds],
+  );
 
-  const reviewRows = useMemo(() => {
-    const rows: Review[][] = [];
-    for (let index = 0; index < myReviews.length; index += 2) {
-      rows.push(myReviews.slice(index, index + 2));
-    }
-    return rows;
-  }, [myReviews]);
+  const timetableSummary = useMemo(() => {
+    const credits = Math.max(selectedTimetableIds.length * 3, 0);
+    const hasFriday = selectedSlots.some((slot) => slot.day === '금');
+    const mondayEmpty = !selectedSlots.some((slot) => slot.day === '월');
+    const thursdayAfternoon = selectedSlots.some((slot) => slot.day === '목' && slot.startPeriod >= 5);
 
-  const handleLogout = async () => {
-    await signOut();
-    navigation.switchTab('Home');
-  };
+    const notes = [
+      `${credits || 0}학점`,
+      hasFriday ? '금요일 수업 있음' : '금요일 여유',
+      mondayEmpty ? '월 공강' : '월 수업 있음',
+      thursdayAfternoon ? '목 오후 수업' : '목 오후 여유',
+    ];
 
-  const handleDeleteReview = (reviewId: number) => {
-    Alert.alert('강의평 삭제', '이 강의평을 내 전시관에서 삭제할까요?', [
+    return notes.join(' · ');
+  }, [selectedSlots, selectedTimetableIds.length]);
+
+  const recentReview = myReviews[0];
+  const usefulAnswers = pointHistory.filter((item) => item.points > 0).length;
+
+  const handleLogout = () => {
+    Alert.alert('로그아웃', '현재 계정에서 로그아웃할까요?', [
       { text: '취소', style: 'cancel' },
       {
-        text: '삭제',
+        text: '로그아웃',
         style: 'destructive',
         onPress: async () => {
-          try {
-            await deleteReview(reviewId);
-            await loadMyData();
-          } catch (error) {
-            setErrorMessage(error instanceof Error ? error.message : '강의평 삭제에 실패했습니다.');
-          }
+          await signOut();
+          navigation.replace({ name: 'Login' });
         },
       },
     ]);
   };
 
-  const handleSaveDepartment = async () => {
-    if (!selectedDepartment) {
-      setErrorMessage('학과를 선택해주세요.');
-      return;
-    }
-
-    setIsUpdatingDepartment(true);
-    setErrorMessage('');
-
-    try {
-      await updateProfile({ department: selectedDepartment });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '학과 수정에 실패했습니다.');
-    } finally {
-      setIsUpdatingDepartment(false);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.group }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 22 }]}
         showsVerticalScrollIndicator={false}
         onScroll={(event) => navigation.onTabScroll(event.nativeEvent.contentOffset.y)}
         scrollEventThrottle={16}
       >
-        <View style={styles.collectionHeader}>
-          <Text style={styles.collectionTitle}>내 전시관</Text>
-          <Text style={styles.collectionMeta}>
-            @{user?.nickname ?? 'guest'} · {user?.department ?? '학과 미설정'}
-          </Text>
-
-          <View style={styles.identityCluster}>
-            <View style={styles.avatarFrame}>
-              <Text style={styles.avatarText}>{getInitial(user?.nickname)}</Text>
-            </View>
-            <View style={styles.identityCopy}>
-              <Text style={styles.identityLabel}>Curated by</Text>
-              <Text style={styles.identityName}>{user ? `${user.nickname} 큐레이터` : '게스트 큐레이터'}</Text>
-            </View>
+        <View style={styles.pageHeader}>
+          <View style={styles.pageTitleGroup}>
+            <Text style={styles.pageTitle}>마이페이지</Text>
+            <Text style={styles.pageSubtitle}>내 활동과 정보를 한눈에 확인하세요.</Text>
           </View>
 
-          <View style={styles.filterRow}>
-            {archiveFilters.map((filter) => {
-              const active = activeFilter === filter.key;
-              return (
-                <Pressable
-                  key={filter.key}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.filterBubble,
-                    {
-                      backgroundColor: active ? filter.color : 'rgba(255,255,255,0.58)',
-                      borderColor: active ? filter.color : 'rgba(255,255,255,0.78)',
-                    },
-                    pressed ? styles.buttonPressed : null,
-                  ]}
-                  onPress={() => setActiveFilter(filter.key)}
-                >
-                  <Text style={[styles.filterBubbleText, { color: active ? '#ffffff' : filter.color }]}>
-                    {filter.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <View style={styles.headerActions}>
+            <PressableScale
+              style={styles.roundIcon}
+              onPress={() => navigation.navigate({ name: 'Notifications' })}
+            >
+              <BellIcon />
+            </PressableScale>
+            <PressableScale
+              style={styles.roundIcon}
+              onPress={() => navigation.navigate({ name: 'Settings' })}
+            >
+              <GearIcon />
+            </PressableScale>
           </View>
-
-          <Text style={styles.collectionDescription}>
-            내가 남긴 강의평과 포인트 흐름을 전시 기록처럼 모았습니다. 좋은 강의를 찾기 위해 남긴 흔적들이 여기서 하나의 컬렉션이 됩니다.
-          </Text>
         </View>
 
         {!user ? (
-          <GuestGallery navigation={navigation} />
+          <View style={styles.guestCard}>
+            <Text style={styles.guestTitle}>로그인이 필요해요</Text>
+            <Text style={styles.guestText}>내 강의평, 시간표, 포인트 활동을 보려면 먼저 로그인해주세요.</Text>
+            <Button label="로그인하기" onPress={() => navigation.navigate({ name: 'Login' })} />
+          </View>
         ) : (
           <>
-            <View style={styles.curatorStrip}>
-              <View style={styles.curatorMetric}>
-                <Text style={styles.curatorMetricValue}>{myReviews.length}</Text>
-                <Text style={styles.curatorMetricLabel}>소장 리뷰</Text>
-              </View>
-              <View style={styles.curatorMetricDivider} />
-              <View style={styles.curatorMetric}>
-                <Text style={styles.curatorMetricValue}>{user.points}P</Text>
-                <Text style={styles.curatorMetricLabel}>보유 포인트</Text>
-              </View>
-              <View style={styles.curatorMetricDivider} />
-              <View style={styles.curatorMetric}>
-                <Text style={styles.curatorMetricValue}>{pointHistory.length}</Text>
-                <Text style={styles.curatorMetricLabel}>활동 기록</Text>
-              </View>
-            </View>
+            <ProfileCard
+              nickname={user.nickname}
+              department={user.department}
+              points={user.points}
+              reviewCount={myReviews.length}
+              usefulAnswers={usefulAnswers}
+              savedCount={cartIds.length}
+              onEditProfile={() => navigation.navigate({ name: 'Settings', section: 'account' })}
+            />
 
             {isLoading ? (
-              <StateBlock label="내 전시관을 정리하는 중입니다." loading />
+              <StatePanel label="마이페이지를 정리하는 중입니다." loading />
             ) : errorMessage ? (
-              <StateBlock label={errorMessage} error />
+              <StatePanel label={errorMessage} error />
             ) : (
               <>
-                {activeFilter === 'reviews' ? (
-                  <ReviewGallery
-                    reviews={myReviews}
-                    rows={reviewRows}
-                    navigation={navigation}
-                    onDelete={handleDeleteReview}
-                  />
-                ) : null}
+                <SectionHeader
+                  title="내 시간표"
+                  actionLabel="전체 보기"
+                  onPress={() => navigation.switchTab('Timetable')}
+                />
+                <View style={styles.timetableCard}>
+                  <View style={styles.timetableCopy}>
+                    <View style={[styles.sectionIconCircle, { backgroundColor: '#eaf2ff' }]}>
+                      <CalendarIcon />
+                    </View>
+                    <View style={styles.timetableTextGroup}>
+                      <Text style={styles.timetableTitle}>이번 학기 시간표</Text>
+                      <Text style={styles.timetableMeta}>{timetableSummary}</Text>
+                      <PressableScale style={styles.miniPill} onPress={() => navigation.switchTab('Timetable')}>
+                        <Text style={styles.miniPillText}>시간표 보기</Text>
+                        <ChevronIcon />
+                      </PressableScale>
+                    </View>
+                  </View>
+                  <TimetablePreview slots={selectedSlots} />
+                </View>
 
-                {activeFilter === 'points' ? <PointArchive pointHistory={pointHistory} /> : null}
+                <SectionHeader title="즐겨찾기" />
+                <View style={styles.favoriteGrid}>
+                  {FAVORITES.map((item) => (
+                    <FavoriteCard
+                      key={item.key}
+                      label={item.label}
+                      count={getFavoriteCount(item.key, cartIds.length, myReviews.length, usefulAnswers)}
+                      tone={item.tone}
+                      onPress={getFavoriteAction(item.key, navigation)}
+                    />
+                  ))}
+                </View>
 
-                {activeFilter === 'profile' ? (
-                  <ProfileArchive
-                    userEmail={user.email}
-                    userDepartment={user.department}
-                    selectedDepartment={selectedDepartment}
-                    isUpdatingDepartment={isUpdatingDepartment}
-                    onSelectDepartment={setSelectedDepartment}
-                    onSaveDepartment={handleSaveDepartment}
-                    onLogout={handleLogout}
+                <SectionHeader title="내 활동" />
+                <View style={styles.listCard}>
+                  <ActivityRow
+                    tone="#2f6edb"
+                    title="내가 작성한 리뷰"
+                    description={recentReview ? `${recentReview.courseName} 외 ${Math.max(myReviews.length - 1, 0)}개` : '내가 남긴 강의 리뷰를 확인해보세요.'}
+                    onPress={() => {
+                      if (recentReview) {
+                        navigation.navigate({ name: 'CourseCollection', courseId: recentReview.courseId });
+                      }
+                    }}
                   />
-                ) : null}
+                  <ActivityRow
+                    tone="#39aa78"
+                    title="내가 작성한 문의"
+                    description="내가 남긴 질문과 답변을 확인해보세요."
+                    onPress={() => navigation.navigate({ name: 'Inquiry' })}
+                  />
+                  <ActivityRow
+                    tone="#a66be4"
+                    title="도움이 된 리뷰"
+                    description="내 리뷰가 좋아요 받은 내역을 확인해보세요."
+                    onPress={() => navigation.navigate({ name: 'Notifications' })}
+                  />
+                  <ActivityRow
+                    tone="#f2b94d"
+                    title="알림 내역"
+                    description="서비스 알림을 확인해보세요."
+                    onPress={() => navigation.navigate({ name: 'Notifications' })}
+                    isLast
+                  />
+                </View>
+
+                <SectionHeader title="설정" />
+                <View style={styles.listCard}>
+                  <SettingRow title="계정 정보" description={user.email} onPress={() => navigation.navigate({ name: 'Settings', section: 'account' })} />
+                  <SettingRow title="개인정보 및 보안" description="학교 이메일과 휴대폰 인증 정보를 관리해요." onPress={() => navigation.navigate({ name: 'Settings', section: 'privacy' })} />
+                  <SettingRow title="앱 설정" description="알림, 화면, 서비스 환경을 조정해요." onPress={() => navigation.navigate({ name: 'Settings', section: 'app' })} />
+                  <SettingRow title="로그아웃" description="현재 계정에서 나갑니다." danger onPress={handleLogout} isLast />
+                </View>
               </>
             )}
           </>
@@ -229,826 +249,926 @@ export function MyPageScreen({ navigation }: Props) {
   );
 }
 
-function GuestGallery({ navigation }: { navigation: AppNavigation }) {
+function ProfileCard({
+  nickname,
+  department,
+  points,
+  reviewCount,
+  usefulAnswers,
+  savedCount,
+  onEditProfile,
+}: {
+  nickname: string;
+  department?: string;
+  points: number;
+  reviewCount: number;
+  usefulAnswers: number;
+  savedCount: number;
+  onEditProfile: () => void;
+}) {
   return (
-    <View style={styles.guestGallery}>
-      <Text style={styles.guestTitle}>로그인하면 개인 전시관이 열립니다.</Text>
-      <Text style={styles.guestBody}>
-        내가 남긴 강의평, 포인트 변화, 전공 기반 큐레이션을 한 장의 컬렉션처럼 확인할 수 있어요.
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null]}
-        onPress={() => navigation.navigate({ name: 'Login' })}
-      >
-        <Text style={styles.primaryButtonText}>로그인하고 전시관 열기</Text>
-      </Pressable>
+    <View style={styles.profileCard}>
+      <View style={styles.avatarColumn}>
+        <View style={styles.avatarBubble}>
+          <View style={styles.mascotFace}>
+            <View style={styles.mascotEarLeft} />
+            <View style={styles.mascotEarRight} />
+            <View style={styles.mascotEyeLeft} />
+            <View style={styles.mascotEyeRight} />
+            <View style={styles.mascotNose} />
+            <View style={styles.mascotMouth} />
+          </View>
+          <View style={styles.cameraBadge}>
+            <CameraIcon />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.profileMain}>
+        <PressableScale style={styles.profileNameRow} onPress={onEditProfile}>
+          <Text style={styles.profileName}>{nickname}님</Text>
+          <View style={styles.schoolBadge}>
+            <Text style={styles.schoolBadgeText}>인하대학교</Text>
+          </View>
+          <ChevronIcon />
+        </PressableScale>
+        <Text style={styles.profileMeta}>{department ?? '학과 미설정'} · {points}P 보유</Text>
+        <Text style={styles.profileGreeting}>{getGreetingMessage()}</Text>
+
+        <View style={styles.profileStats}>
+          <ProfileStat value={savedCount} label="담은 강의" />
+          <View style={styles.statDivider} />
+          <ProfileStat value={reviewCount} label="작성한 리뷰" />
+          <View style={styles.statDivider} />
+          <ProfileStat value={usefulAnswers} label="도움이 된 답변" />
+        </View>
+      </View>
     </View>
   );
 }
 
-function ReviewGallery({
-  reviews,
-  rows,
-  navigation,
-  onDelete,
+function ProfileStat({ value, label }: { value: number; label: string }) {
+  return (
+    <View style={styles.profileStat}>
+      <Text style={styles.profileStatValue}>{value}</Text>
+      <Text style={styles.profileStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({
+  title,
+  actionLabel,
+  onPress,
 }: {
-  reviews: Review[];
-  rows: Review[][];
-  navigation: AppNavigation;
-  onDelete: (reviewId: number) => void;
+  title: string;
+  actionLabel?: string;
+  onPress?: () => void;
 }) {
-  if (reviews.length === 0) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {actionLabel ? (
+        <PressableScale style={styles.sectionAction} onPress={onPress}>
+          <Text style={styles.sectionActionText}>{actionLabel}</Text>
+          <ChevronIcon />
+        </PressableScale>
+      ) : null}
+    </View>
+  );
+}
+
+function TimetablePreview({ slots }: { slots: TimetableSlot[] }) {
+  if (slots.length === 0) {
     return (
-      <StateBlock label="아직 소장된 강의평이 없습니다. 마음에 남는 강의를 발견하면 첫 작품으로 걸어둘 수 있어요." />
+      <View style={styles.timetableEmpty}>
+        <Text style={styles.timetableEmptyText}>시간표를 아직 담지 않았어요</Text>
+      </View>
     );
   }
 
-  return (
-    <View style={styles.gallerySection}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>Review collection</Text>
-        <Text style={styles.sectionTitle}>내가 남긴 강의평</Text>
-      </View>
-
-      {rows.map((row, rowIndex) => (
-        <View key={`review-row-${rowIndex}`} style={styles.reviewRow}>
-          {row.map((review, columnIndex) => {
-            const index = rowIndex * 2 + columnIndex;
-            return (
-              <ReviewExhibitCard
-                key={review.id}
-                review={review}
-                index={index}
-                onOpen={() => navigation.navigate({ name: 'CourseCollection', courseId: review.courseId })}
-                onDelete={() => onDelete(review.id)}
-              />
-            );
-          })}
-          {row.length === 1 ? <View style={styles.reviewCellGhost} /> : null}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function ReviewExhibitCard({
-  review,
-  index,
-  onOpen,
-  onDelete,
-}: {
-  review: Review;
-  index: number;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const palette = getReviewPalette(review, index);
+  const previewSlots = slots.slice(0, 7);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.reviewCard,
-        { backgroundColor: palette.background },
-        pressed ? styles.buttonPressed : null,
-      ]}
-      onPress={onOpen}
-    >
-      <View style={[styles.reviewHalo, { backgroundColor: palette.haloA }]} />
-      <View style={[styles.reviewHaloSmall, { backgroundColor: palette.haloB }]} />
-      <View style={styles.reviewCardInner}>
-        <View style={styles.reviewCardTop}>
-          <Text style={[styles.reviewBadge, { color: palette.accent }]}>{getReviewMood(review)}</Text>
-          <Text style={[styles.reviewRating, { color: palette.text }]}>{review.rating.toFixed(1)}</Text>
-        </View>
-
-        <Text style={[styles.reviewCourse, { color: palette.text }]} numberOfLines={3}>
-          {review.courseName}
-        </Text>
-        <Text style={[styles.reviewMeta, { color: palette.subtle }]} numberOfLines={1}>
-          {review.professorName} 교수님 · {review.semester}
-        </Text>
-
-        <Text style={[styles.reviewExcerpt, { color: palette.text }]} numberOfLines={5}>
-          {review.oneLineTip || review.content}
-        </Text>
-
-        <View style={styles.reviewTags}>
-          <View style={[styles.reviewTag, { backgroundColor: palette.tag }]}>
-            <Text style={[styles.reviewTagText, { color: palette.text }]}>{review.difficulty || '난이도 미상'}</Text>
-          </View>
-          <View style={[styles.reviewTag, { backgroundColor: palette.tag }]}>
-            <Text style={[styles.reviewTagText, { color: palette.text }]}>{review.workload || '과제 미상'}</Text>
-          </View>
-        </View>
-
-        <View style={styles.reviewActions}>
-          <Text style={[styles.reviewDate, { color: palette.subtle }]}>{formatShortDate(review.createdAt)}</Text>
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.deleteButton,
-              { backgroundColor: palette.tag },
-              pressed ? styles.buttonPressed : null,
-            ]}
-            onPress={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Text style={[styles.deleteButtonText, { color: palette.text }]}>삭제</Text>
-          </Pressable>
-        </View>
+    <View style={styles.timetablePreview}>
+      <View style={styles.previewDays}>
+        {TIMETABLE_DAYS.map((day) => (
+          <Text key={day} style={styles.previewDay}>{day}</Text>
+        ))}
       </View>
-    </Pressable>
-  );
-}
-
-function PointArchive({ pointHistory }: { pointHistory: PointHistoryItem[] }) {
-  return (
-    <View style={styles.gallerySection}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>Accession log</Text>
-        <Text style={styles.sectionTitle}>포인트 수장고</Text>
-      </View>
-
-      <View style={styles.pointArchive}>
-        {pointHistory.length === 0 ? (
-          <Text style={styles.emptyText}>포인트 내역이 아직 없습니다.</Text>
-        ) : (
-          pointHistory.slice(0, 8).map((item) => (
-            <View key={item.id} style={styles.pointRow}>
-              <View style={[styles.pointDot, item.points > 0 ? styles.pointDotPositive : styles.pointDotNegative]} />
-              <View style={styles.pointCopy}>
-                <Text style={styles.pointTitle}>{item.description}</Text>
-                <Text style={styles.pointDate}>{formatHistoryDate(item.date)}</Text>
-              </View>
-              <Text style={[styles.pointValue, item.points > 0 ? styles.pointValuePositive : styles.pointValueNegative]}>
-                {item.points > 0 ? '+' : ''}
-                {item.points}P
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
-    </View>
-  );
-}
-
-function ProfileArchive({
-  userEmail,
-  userDepartment,
-  selectedDepartment,
-  isUpdatingDepartment,
-  onSelectDepartment,
-  onSaveDepartment,
-  onLogout,
-}: {
-  userEmail: string;
-  userDepartment?: string;
-  selectedDepartment: string;
-  isUpdatingDepartment: boolean;
-  onSelectDepartment: (department: string) => void;
-  onSaveDepartment: () => void;
-  onLogout: () => void;
-}) {
-  const hasDepartmentChange = !!selectedDepartment && selectedDepartment !== userDepartment;
-
-  return (
-    <View style={styles.gallerySection}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>Curator profile</Text>
-        <Text style={styles.sectionTitle}>계정 전시 정보</Text>
-      </View>
-
-      <View style={styles.profilePanel}>
-        <InfoLine label="이메일" value={userEmail} />
-        <InfoLine label="학과" value={userDepartment ?? '학과 미설정'} />
-        <InfoLine label="큐레이션 기준" value="강의평, 포인트, 전공 기반 탐색" />
-        <View style={styles.departmentEditPanel}>
-          <View style={styles.departmentEditHeader}>
-            <Text style={styles.infoLabel}>내 전공 추천 기준</Text>
-            <Text style={styles.departmentEditValue}>{selectedDepartment || '학과 선택'}</Text>
-          </View>
-          <View style={styles.departmentChipWrap}>
-            {departments.map((department) => {
-              const active = selectedDepartment === department;
-              return (
-                <Pressable
-                  key={department}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.departmentChip,
-                    active ? styles.departmentChipActive : null,
-                    pressed ? styles.buttonPressed : null,
+      <View style={styles.previewGrid}>
+        {TIMETABLE_DAYS.map((day, dayIndex) => (
+          <View key={`column-${day}`} style={styles.previewColumn}>
+            {[0, 1, 2, 3].map((row) => (
+              <View key={`${day}-${row}`} style={styles.previewCell} />
+            ))}
+            {previewSlots
+              .filter((slot) => slot.day === day)
+              .map((slot, index) => (
+                <View
+                  key={`${slot.day}-${slot.startPeriod}-${index}`}
+                  style={[
+                    styles.previewBlock,
+                    {
+                      top: getPreviewTop(slot.startPeriod),
+                      height: Math.max((slot.endPeriod - slot.startPeriod + 1) * 17, 18),
+                      backgroundColor: PREVIEW_COLORS[(dayIndex + index) % PREVIEW_COLORS.length],
+                    },
                   ]}
-                  onPress={() => onSelectDepartment(department)}
-                >
-                  <Text style={[styles.departmentChipText, active ? styles.departmentChipTextActive : null]}>
-                    {department}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                />
+              ))}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.saveDepartmentButton,
-              !hasDepartmentChange ? styles.saveDepartmentButtonDisabled : null,
-              pressed && hasDepartmentChange ? styles.buttonPressed : null,
-            ]}
-            onPress={onSaveDepartment}
-            disabled={!hasDepartmentChange || isUpdatingDepartment}
-          >
-            {isUpdatingDepartment ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.saveDepartmentButtonText}>학과 저장</Text>
-            )}
-          </Pressable>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.logoutButton, pressed ? styles.buttonPressed : null]}
-          onPress={onLogout}
-        >
-          <Text style={styles.logoutButtonText}>로그아웃</Text>
-        </Pressable>
+        ))}
       </View>
     </View>
   );
 }
 
-function InfoLine({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoLine}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
-function StateBlock({
+function FavoriteCard({
   label,
-  error = false,
-  loading = false,
+  count,
+  tone,
+  onPress,
 }: {
   label: string;
-  error?: boolean;
-  loading?: boolean;
+  count: number;
+  tone: string;
+  onPress?: () => void;
 }) {
   return (
-    <View style={[styles.stateBlock, error ? styles.stateBlockError : null]}>
-      {loading ? <ActivityIndicator color={colors.primary} /> : null}
-      <Text style={[styles.stateText, error ? styles.stateTextError : null]}>{label}</Text>
+    <PressableScale style={styles.favoriteCard} onPress={onPress}>
+      <View style={[styles.favoriteIcon, { backgroundColor: `${tone}18` }]}>
+        <MiniSymbol tone={tone} />
+      </View>
+      <Text style={styles.favoriteLabel}>{label}</Text>
+      <Text style={styles.favoriteCount}>{count}개</Text>
+    </PressableScale>
+  );
+}
+
+function ActivityRow({
+  tone,
+  title,
+  description,
+  onPress,
+  isLast,
+}: {
+  tone: string;
+  title: string;
+  description: string;
+  onPress?: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <PressableScale style={[styles.listRow, isLast ? styles.listRowLast : null]} onPress={onPress}>
+      <View style={[styles.rowIconCircle, { backgroundColor: `${tone}16` }]}>
+        <MiniSymbol tone={tone} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowDesc}>{description}</Text>
+      </View>
+      <ChevronIcon />
+    </PressableScale>
+  );
+}
+
+function SettingRow({
+  title,
+  description,
+  danger,
+  onPress,
+  isLast,
+}: {
+  title: string;
+  description: string;
+  danger?: boolean;
+  onPress?: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <PressableScale style={[styles.listRow, isLast ? styles.listRowLast : null]} onPress={onPress}>
+      <View style={[styles.settingIcon, danger ? styles.settingIconDanger : null]}>
+        <View style={[styles.settingIconLine, danger ? styles.settingIconLineDanger : null]} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={[styles.rowTitle, danger ? styles.dangerText : null]}>{title}</Text>
+        <Text style={styles.rowDesc}>{description}</Text>
+      </View>
+      <ChevronIcon />
+    </PressableScale>
+  );
+}
+
+function BellIcon() {
+  return (
+    <View style={styles.bellIcon}>
+      <View style={styles.bellBody} />
+      <View style={styles.bellClapper} />
     </View>
   );
 }
 
-function getInitial(name?: string) {
-  return name?.trim().slice(0, 1) || '인';
+function GearIcon() {
+  return (
+    <View style={styles.gearIcon}>
+      <View style={styles.gearCenter} />
+      <View style={[styles.gearTooth, styles.gearToothTop]} />
+      <View style={[styles.gearTooth, styles.gearToothBottom]} />
+      <View style={[styles.gearTooth, styles.gearToothLeft]} />
+      <View style={[styles.gearTooth, styles.gearToothRight]} />
+    </View>
+  );
 }
 
-function getReviewMood(review: Review) {
-  if (review.rating >= 4.3) {
-    return '추천 작품';
-  }
-  if (review.workload.includes('많') || review.difficulty.includes('어려')) {
-    return '주의 깊게 보기';
-  }
-  if (review.attendance.includes('엄격')) {
-    return '출석 체크';
-  }
-  return '수강 기록';
+function CalendarIcon() {
+  return (
+    <View style={styles.calendarIcon}>
+      <View style={styles.calendarTop} />
+      <View style={styles.calendarRingLeft} />
+      <View style={styles.calendarRingRight} />
+    </View>
+  );
 }
 
-function getReviewPalette(review: Review, index: number) {
-  const isHighRated = review.rating >= 4;
-  const isHeavy = review.workload.includes('많') || review.difficulty.includes('어려');
-  const palettes = [
-    {
-      background: '#101827',
-      text: '#ffffff',
-      subtle: 'rgba(255,255,255,0.68)',
-      accent: '#8cb9ff',
-      tag: 'rgba(255,255,255,0.14)',
-      haloA: 'rgba(84,132,206,0.38)',
-      haloB: 'rgba(255,255,255,0.10)',
-    },
-    {
-      background: '#f3efe6',
-      text: '#121826',
-      subtle: '#74716b',
-      accent: '#9d5537',
-      tag: 'rgba(18,24,38,0.07)',
-      haloA: 'rgba(216,79,65,0.12)',
-      haloB: 'rgba(18,24,38,0.06)',
-    },
-    {
-      background: '#173e42',
-      text: '#ffffff',
-      subtle: 'rgba(255,255,255,0.68)',
-      accent: '#9ad8c9',
-      tag: 'rgba(255,255,255,0.15)',
-      haloA: 'rgba(154,216,201,0.24)',
-      haloB: 'rgba(255,255,255,0.10)',
-    },
-  ];
+function CameraIcon() {
+  return (
+    <View style={styles.cameraIcon}>
+      <View style={styles.cameraLens} />
+    </View>
+  );
+}
 
-  if (isHeavy) {
-    return palettes[1];
+function ChevronIcon() {
+  return <Text style={styles.chevron}>›</Text>;
+}
+
+function MiniSymbol({ tone }: { tone: string }) {
+  return (
+    <View style={styles.miniSymbol}>
+      <View style={[styles.miniSymbolCore, { backgroundColor: tone }]} />
+      <View style={[styles.miniSymbolTail, { backgroundColor: tone }]} />
+    </View>
+  );
+}
+
+function getFavoriteCount(
+  key: (typeof FAVORITES)[number]['key'],
+  savedCount: number,
+  reviewCount: number,
+  usefulAnswers: number,
+) {
+  switch (key) {
+    case 'saved':
+      return savedCount;
+    case 'reviews':
+      return reviewCount;
+    case 'questions':
+      return usefulAnswers;
+    case 'points':
+      return usefulAnswers;
+    default:
+      return 0;
   }
+}
 
-  if (isHighRated) {
-    return palettes[2];
+function getFavoriteAction(
+  key: (typeof FAVORITES)[number]['key'],
+  navigation: AppNavigation,
+): () => void {
+  switch (key) {
+    case 'saved':
+      return () => navigation.navigate({ name: 'CartFull' });
+    case 'reviews':
+      return () => navigation.navigate({ name: 'Inquiry' });
+    case 'questions':
+      return () => navigation.navigate({ name: 'Inquiry' });
+    case 'points':
+      return () => navigation.navigate({ name: 'PointHistory' });
+    default:
+      return () => {};
   }
-
-  return palettes[index % palettes.length];
 }
 
-function formatShortDate(value: string) {
-  const [date] = value.split('T');
-  return date?.slice(2).replace(/-/g, '.') ?? '';
+function getGreetingMessage() {
+  const hour = new Date().getHours();
+  if (hour < 12) return '좋은 아침이에요! 오늘 수강신청 준비됐나요?';
+  if (hour < 18) return '오늘도 좋은 하루 보내고 있나요?';
+  return '오늘 하루도 수고했어요!';
 }
 
-function formatHistoryDate(value: string) {
-  return value.replace('T', ' ').slice(0, 16);
+
+function getPreviewTop(period: number) {
+  return Math.max((period - 1) * 17, 0);
 }
+
+const PREVIEW_COLORS = ['#dfe9ff', '#efe1ff', '#e1f5ea', '#fff0cf', '#dce9ff'];
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f7f9fd',
+    backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 112,
-    gap: spacing.section,
-  },
-  collectionHeader: {
     paddingHorizontal: spacing.page,
-    alignItems: 'center',
-    gap: spacing.related,
+    paddingBottom: 132,
+    gap: 22,
   },
-  collectionTitle: {
-    color: '#121826',
-    fontSize: 30,
-    lineHeight: 34,
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.group,
+  },
+  pageTitleGroup: {
+    gap: 8,
+  },
+  pageTitle: {
+    color: '#101827',
+    fontSize: 29,
+    lineHeight: 35,
     fontWeight: '900',
     letterSpacing: -1.1,
   },
-  collectionMeta: {
-    color: '#96969d',
+  pageSubtitle: {
+    color: '#6f7b8f',
     fontSize: 14,
-    fontWeight: '800',
+    lineHeight: 19,
+    fontWeight: '700',
+    letterSpacing: -0.25,
   },
-  identityCluster: {
+  headerActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 2,
+    gap: 10,
   },
-  avatarFrame: {
+  roundIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-  },
-  avatarText: {
-    color: '#121826',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  identityCopy: {
-    alignItems: 'flex-start',
-  },
-  identityLabel: {
-    color: '#a0a0a7',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  identityName: {
-    color: '#121826',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.related,
-    marginTop: spacing.tight,
-  },
-  filterBubble: {
-    minWidth: 58,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderWidth: 2,
-  },
-  filterBubbleText: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  collectionDescription: {
-    color: '#121826',
-    fontSize: 16,
-    lineHeight: 23,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: -0.45,
-    maxWidth: 336,
-  },
-  curatorStrip: {
-    marginHorizontal: spacing.page,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     shadowColor: '#16499a',
     shadowOpacity: 0.08,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 12 },
   },
-  curatorMetric: {
+  profileCard: {
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    padding: spacing.group,
+    flexDirection: 'row',
+    gap: spacing.group,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.10,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    borderWidth: 1,
+    borderColor: 'rgba(230,236,247,0.9)',
+  },
+  avatarColumn: {
+    paddingTop: 6,
+  },
+  avatarBubble: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: '#dfeaff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mascotFace: {
+    width: 70,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#f7fbff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mascotEarLeft: {
+    position: 'absolute',
+    left: 4,
+    top: 15,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#f7fbff',
+  },
+  mascotEarRight: {
+    position: 'absolute',
+    right: 4,
+    top: 15,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#f7fbff',
+  },
+  mascotEyeLeft: {
+    position: 'absolute',
+    left: 23,
+    top: 28,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1e3a68',
+  },
+  mascotEyeRight: {
+    position: 'absolute',
+    right: 23,
+    top: 28,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1e3a68',
+  },
+  mascotNose: {
+    width: 7,
+    height: 5,
+    borderRadius: 4,
+    backgroundColor: '#1e3a68',
+    marginTop: 12,
+  },
+  mascotMouth: {
+    width: 18,
+    height: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#1e3a68',
+    borderRadius: 9,
+    marginTop: 2,
+  },
+  cameraBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 33,
+    height: 33,
+    borderRadius: 16.5,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#16499a',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  cameraIcon: {
+    width: 17,
+    height: 13,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#1d355d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraLens: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1d355d',
+  },
+  profileMain: {
+    flex: 1,
+    gap: 8,
+  },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileName: {
+    color: '#101827',
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: '900',
+    letterSpacing: -0.9,
+  },
+  schoolBadge: {
+    borderRadius: 999,
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  schoolBadgeText: {
+    color: '#3b6dcc',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+  },
+  profileMeta: {
+    color: '#59677c',
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  profileGreeting: {
+    color: '#758195',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  profileStats: {
+    marginTop: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileStat: {
     flex: 1,
     alignItems: 'center',
     gap: 2,
   },
-  curatorMetricValue: {
-    color: '#121826',
-    fontSize: 18,
+  profileStatValue: {
+    color: '#101827',
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '900',
-    letterSpacing: -0.6,
+    letterSpacing: -0.7,
   },
-  curatorMetricLabel: {
-    color: '#7b879a',
+  profileStatLabel: {
+    color: '#718098',
     fontSize: 10,
-    fontWeight: '800',
+    lineHeight: 13,
+    fontWeight: '600',
   },
-  curatorMetricDivider: {
+  statDivider: {
     width: 1,
     height: 28,
-    backgroundColor: '#dfe7f5',
-  },
-  gallerySection: {
-    gap: spacing.related,
+    backgroundColor: '#dfe6f2',
   },
   sectionHeader: {
-    paddingHorizontal: spacing.page,
-    gap: 4,
-  },
-  sectionLabel: {
-    color: '#16499a',
-    fontSize: 12,
-    fontWeight: '900',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
   },
   sectionTitle: {
-    color: '#121826',
-    fontSize: 24,
-    lineHeight: 29,
-    fontWeight: '900',
-    letterSpacing: -0.9,
-  },
-  reviewRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.related,
-    paddingHorizontal: spacing.page,
-  },
-  reviewCellGhost: {
-    flex: 1,
-  },
-  reviewCard: {
-    flex: 1,
-    minHeight: 284,
-    borderRadius: 28,
-    overflow: 'hidden',
-  },
-  reviewHalo: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 999,
-    right: -42,
-    top: 28,
-  },
-  reviewHaloSmall: {
-    position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 999,
-    left: -32,
-    bottom: 50,
-  },
-  reviewCardInner: {
-    flex: 1,
-    padding: 16,
-    justifyContent: 'space-between',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 28,
-  },
-  reviewCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  reviewBadge: {
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  reviewRating: {
+    color: '#101827',
     fontSize: 20,
+    lineHeight: 25,
     fontWeight: '900',
-    letterSpacing: -0.8,
+    letterSpacing: -0.7,
   },
-  reviewCourse: {
-    fontSize: 25,
-    lineHeight: 29,
-    fontWeight: '900',
-    letterSpacing: -1.1,
-  },
-  reviewMeta: {
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '800',
-  },
-  reviewExcerpt: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  reviewTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  reviewTag: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  reviewTagText: {
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  reviewActions: {
+  sectionAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    gap: 2,
   },
-  reviewDate: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  deleteButton: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  deleteButtonText: {
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  buttonPressed: {
-    opacity: 0.74,
-    transform: [{ scale: 0.985 }],
-  },
-  pointArchive: {
-    marginHorizontal: spacing.page,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: spacing.page,
-    gap: spacing.related,
-  },
-  pointRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.related,
-  },
-  pointDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-  },
-  pointDotPositive: {
-    backgroundColor: '#226d68',
-  },
-  pointDotNegative: {
-    backgroundColor: colors.danger,
-  },
-  pointCopy: {
-    flex: 1,
-    gap: 3,
-  },
-  pointTitle: {
-    color: '#121826',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: -0.25,
-  },
-  pointDate: {
-    color: '#7b879a',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  pointValue: {
+  sectionActionText: {
+    color: '#7c879a',
     fontSize: 13,
-    fontWeight: '900',
+    lineHeight: 17,
+    fontWeight: '600',
   },
-  pointValuePositive: {
-    color: '#226d68',
-  },
-  pointValueNegative: {
-    color: colors.danger,
-  },
-  profilePanel: {
-    marginHorizontal: spacing.page,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: spacing.page,
-    gap: spacing.group,
-  },
-  departmentEditPanel: {
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.50)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.74)',
+  timetableCard: {
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.78)',
     padding: spacing.group,
-    gap: spacing.related,
-  },
-  departmentEditHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: spacing.related,
+    gap: spacing.group,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(230,236,247,0.9)',
+    shadowColor: '#16499a',
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
   },
-  departmentEditValue: {
-    flexShrink: 1,
-    color: '#121826',
-    fontSize: 13,
-    fontWeight: '900',
-    textAlign: 'right',
-  },
-  departmentChipWrap: {
+  timetableCopy: {
+    flex: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.related,
+    alignItems: 'center',
   },
-  departmentChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-  },
-  departmentChipActive: {
-    backgroundColor: '#121826',
-    borderColor: '#121826',
-  },
-  departmentChipText: {
-    color: '#65738a',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: -0.15,
-  },
-  departmentChipTextActive: {
-    color: '#ffffff',
-  },
-  saveDepartmentButton: {
-    minHeight: 44,
-    borderRadius: 999,
-    backgroundColor: 'rgba(34,109,104,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+  sectionIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
   },
-  saveDepartmentButtonDisabled: {
-    opacity: 0.38,
-  },
-  saveDepartmentButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  infoLine: {
+  timetableTextGroup: {
+    flex: 1,
     gap: 5,
   },
-  infoLabel: {
-    color: '#96969d',
-    fontSize: 11,
+  timetableTitle: {
+    color: '#101827',
+    fontSize: 17,
+    lineHeight: 21,
     fontWeight: '900',
+    letterSpacing: -0.55,
   },
-  infoValue: {
-    color: '#121826',
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '800',
-    letterSpacing: -0.35,
+  timetableMeta: {
+    color: '#718098',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
   },
-  logoutButton: {
+  miniPill: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
     borderRadius: 999,
-    backgroundColor: 'rgba(18,24,38,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    gap: 2,
   },
-  logoutButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
+  miniPillText: {
+    color: '#2f6edb',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  timetablePreview: {
+    width: 142,
+    gap: 5,
+  },
+  timetableEmpty: {
+    width: 142,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timetableEmptyText: {
+    color: '#9aa5b8',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  previewDays: {
+    flexDirection: 'row',
+  },
+  previewDay: {
+    flex: 1,
+    color: '#101827',
+    fontSize: 10,
+    lineHeight: 13,
     fontWeight: '900',
+    textAlign: 'center',
   },
-  guestGallery: {
-    marginHorizontal: spacing.page,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+  previewGrid: {
+    height: 76,
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderColor: '#e7edf7',
+    overflow: 'hidden',
+  },
+  previewColumn: {
+    flex: 1,
+    position: 'relative',
+  },
+  previewCell: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e7edf7',
+  },
+  previewBlock: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(91,116,150,0.08)',
+  },
+  favoriteGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  favoriteCard: {
+    flex: 1,
+    minHeight: 118,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(230,236,247,0.9)',
+    paddingHorizontal: 13,
+    paddingVertical: 15,
+    gap: 9,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 9 },
+  },
+  favoriteIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteLabel: {
+    color: '#101827',
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  favoriteCount: {
+    color: '#718098',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '500',
+  },
+  listCard: {
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(230,236,247,0.9)',
+    paddingHorizontal: spacing.group,
+    shadowColor: '#16499a',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  listRow: {
+    minHeight: 74,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.related,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef2f7',
+  },
+  listRowLast: {
+    borderBottomWidth: 0,
+  },
+  rowIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  rowTitle: {
+    color: '#101827',
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  rowDesc: {
+    color: '#718098',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  settingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingIconDanger: {
+    backgroundColor: 'rgba(216,79,65,0.10)',
+  },
+  settingIconLine: {
+    width: 17,
+    height: 17,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#8a96aa',
+  },
+  settingIconLineDanger: {
+    borderColor: colors.danger,
+  },
+  dangerText: {
+    color: colors.danger,
+  },
+  guestCard: {
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(230,236,247,0.9)',
     padding: spacing.page,
     gap: spacing.related,
   },
   guestTitle: {
-    color: '#121826',
+    color: '#101827',
     fontSize: 24,
     lineHeight: 30,
     fontWeight: '900',
-    letterSpacing: -0.8,
+    letterSpacing: -0.9,
   },
-  guestBody: {
-    color: '#6b7280',
+  guestText: {
+    color: '#6f7b8f',
     fontSize: 14,
     lineHeight: 21,
-    fontWeight: '700',
+    fontWeight: '500',
   },
-  primaryButton: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(18,24,38,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    paddingVertical: 15,
+  chevron: {
+    color: '#8a96aa',
+    fontSize: 28,
+    lineHeight: 28,
+    fontWeight: '400',
+    marginTop: -2,
+  },
+  bellIcon: {
+    width: 21,
+    height: 24,
     alignItems: 'center',
   },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '900',
+  bellBody: {
+    width: 15,
+    height: 17,
+    borderWidth: 2,
+    borderColor: '#101827',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
   },
-  stateBlock: {
-    minHeight: 150,
-    marginHorizontal: spacing.page,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    paddingHorizontal: spacing.page,
-    paddingVertical: spacing.page,
+  bellClapper: {
+    width: 6,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: '#101827',
+    marginTop: 2,
+  },
+  gearIcon: {
+    width: 23,
+    height: 23,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.related,
   },
-  stateBlockError: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,59,48,0.16)',
+  gearCenter: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#101827',
   },
-  stateText: {
-    color: '#6b7280',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '800',
-    textAlign: 'center',
+  gearTooth: {
+    position: 'absolute',
+    width: 4,
+    height: 7,
+    borderRadius: 2,
+    backgroundColor: '#101827',
   },
-  stateTextError: {
-    color: colors.danger,
+  gearToothTop: {
+    top: 0,
   },
-  emptyText: {
-    color: '#6b7280',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '800',
-    textAlign: 'center',
+  gearToothBottom: {
+    bottom: 0,
+  },
+  gearToothLeft: {
+    left: 0,
+    transform: [{ rotate: '90deg' }],
+  },
+  gearToothRight: {
+    right: 0,
+    transform: [{ rotate: '90deg' }],
+  },
+  calendarIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#2f6edb',
+    overflow: 'hidden',
+  },
+  calendarTop: {
+    height: 6,
+    backgroundColor: '#2f6edb',
+  },
+  calendarRingLeft: {
+    position: 'absolute',
+    top: -2,
+    left: 5,
+    width: 2,
+    height: 7,
+    backgroundColor: '#2f6edb',
+  },
+  calendarRingRight: {
+    position: 'absolute',
+    top: -2,
+    right: 5,
+    width: 2,
+    height: 7,
+    backgroundColor: '#2f6edb',
+  },
+  miniSymbol: {
+    width: 17,
+    height: 18,
+    alignItems: 'center',
+  },
+  miniSymbolCore: {
+    width: 13,
+    height: 13,
+    borderRadius: 4,
+  },
+  miniSymbolTail: {
+    width: 7,
+    height: 7,
+    borderRadius: 2,
+    marginTop: -4,
+    transform: [{ rotate: '45deg' }],
   },
 });
