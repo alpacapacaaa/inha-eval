@@ -16,26 +16,20 @@ export function Surface({ children, variant = 'glass', style }: SurfaceProps) {
 
 const styles = StyleSheet.create({
   base: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
   },
   glass: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
+    shadowOpacity: 0,
   },
   raised: {
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 34,
-    elevation: 4,
+    backgroundColor: '#FFFFFF',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   quiet: {
-    backgroundColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: '#FFFFFF',
     shadowOpacity: 0,
   },
 });

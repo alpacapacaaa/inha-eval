@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { PressableScale } from './ui';
 import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
 
 interface ListRowProps {
   title: string;
@@ -53,19 +54,19 @@ export function ListRow({
 
 const styles = StyleSheet.create({
   pressable: {
-    backgroundColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: colors.surface,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.page,
     paddingVertical: 14,
-    backgroundColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: colors.surface,
   },
   rowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.line,
+    borderBottomColor: colors.cardBorder,
   },
   leading: {
     minWidth: 34,
@@ -84,14 +85,15 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: colors.inkBlue,
-    fontSize: 16,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '600',
     letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 18,
   },
   meta: {

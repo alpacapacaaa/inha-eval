@@ -20,17 +20,17 @@ export function StatePanel({ label, loading = false, error = false }: StatePanel
 
 const styles = StyleSheet.create({
   panel: {
-    minHeight: 152,
-    marginHorizontal: spacing.page,
-    borderRadius: 22,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+    minHeight: 132,
+    marginHorizontal: 18,
+    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.related,
   },
   errorPanel: {
-    borderColor: 'rgba(255,59,48,0.16)',
+    backgroundColor: colors.dangerSoft,
   },
   text: {
     color: colors.textMuted,
