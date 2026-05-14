@@ -2,6 +2,7 @@ export interface User {
   email: string;
   nickname: string;
   department?: string;
+  phoneNumber?: string;
   points: number;
 }
 
@@ -10,6 +11,7 @@ export interface LoginResponse {
   refreshToken?: string;
   nickname: string;
   department?: string;
+  phoneNumber?: string;
   points: number;
 }
 
@@ -19,7 +21,14 @@ export interface Course {
   professor: string;
   department: string;
   credits?: number | null;
+  section?: string | null;
   semester?: string | null;
+  slots?: Array<{
+    day: '월' | '화' | '수' | '목' | '금';
+    startPeriod: number;
+    endPeriod: number;
+    location: string;
+  }>;
   rating: number;
   reviewCount: number;
   category: string;
@@ -28,6 +37,8 @@ export interface Course {
   workload: string;
   attendance: string;
   grading: string;
+  generalArea?: string | null;
+  evaluationType?: string | null;
 }
 
 export interface Review {
@@ -43,6 +54,7 @@ export interface Review {
   grading: string;
   content: string;
   likes: number;
+  likedByMe?: boolean;
   createdAt: string;
   isAnonymous: boolean;
   examTypes?: string[];
@@ -53,14 +65,21 @@ export interface Review {
   examKeywords?: string[];
   recommendFor?: string[];
   notRecommendFor?: string[];
+  badges?: string[];
+  examMidtermInfo?: string;
+  examFinalInfo?: string;
+  examAssignmentInfo?: string;
+  examQuizInfo?: string;
+  pastExamHelpfulness?: string;
+  scopePredictability?: string;
+  studyResources?: string[];
+  problemStyles?: string[];
+  examPrepTip?: string;
   diffScore?: number | null;
-  teachingScore?: number | null;
   gradScore?: number | null;
   workScore?: number | null;
   prerequisiteScore?: number | null;
   depthScore?: number | null;
-  timeInvestScore?: number | null;
-  attScore?: number | null;
   pastExamScore?: number | null;
 }
 
@@ -71,10 +90,10 @@ export interface CourseStats {
   gradScoreCount: number;
   workScore: number | null;
   workScoreCount: number;
-  teachingScore: number | null;
-  teachingScoreCount: number;
-  attScore: number | null;
-  attScoreCount: number;
+  prerequisiteScore: number | null;
+  prerequisiteScoreCount: number;
+  depthScore: number | null;
+  depthScoreCount: number;
   pastExamScore: number | null;
   pastExamScoreCount: number;
 }
