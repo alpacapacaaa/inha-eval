@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PressableScale, StatePanel } from '../components/ui';
+import { useAuth } from '../contexts/AuthContext';
 import { getAllCourses } from '../lib/api/courses';
-import { loadSelectedTimetableIds, loadTimetableCartIds } from '../lib/storage/timetableStorage';
 import {
+  loadSelectedTimetableIds,
+  loadTimetableCartIds,
+  saveSelectedTimetableIds,
+  saveTimetableCartIds,
+} from '../lib/storage/timetableStorage';
+import {
+  formatPeriodRange,
   PERIODS,
   TIMETABLE_BY_COURSE_ID,
   TIMETABLE_DAYS,
@@ -21,15 +29,25 @@ interface Props {
 
 type TimetableCourse = Course & { slots: TimetableSlot[] };
 
-const PERIOD_HEIGHT = 58;
-const BLOCK_COLORS = ['#dfe9ff', '#e2f4ea', '#efe4ff', '#fff0cf', '#e7f0ff', '#dff5f3'];
-const BLOCK_TEXT_COLORS = ['#16499a', '#226d68', '#7655b8', '#8a5a28', '#24548f', '#1a6c68'];
+const PERIOD_HEIGHT = 29;
+const BLOCK_COLORS = ['#E0EEFF', '#e2f4ea', '#efe4ff', '#fff0cf', '#EBF3FF', '#dff5f3'];
+const BLOCK_TEXT_COLORS = ['#23A9FF', '#226d68', '#7655b8', '#8a5a28', '#23A9FF', '#1a6c68'];
+const MAX_TIMETABLE_CREDITS = 21;
+const DEFAULT_VISIBLE_PERIOD = 19;
+const COURSE_SCOPE_COLORS = {
+  general: '#226d68',
+  major: '#d96816',
+  other: '#8A96AA',
+};
 
 export function TimetableFullScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [cartIds, setCartIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     let isActive = true;
@@ -46,6 +64,7 @@ export function TimetableFullScreen({ navigation }: Props) {
 
         const validSelectedIds = storedSelectedIds.filter((id) => storedCartIds.includes(id));
         setAllCourses(courses);
+        setCartIds(storedCartIds);
         setSelectedIds(validSelectedIds);
       } finally {
         if (isActive) setIsLoading(false);
@@ -60,9 +79,14 @@ export function TimetableFullScreen({ navigation }: Props) {
     () =>
       allCourses.map((course) => ({
         ...course,
-        slots: TIMETABLE_BY_COURSE_ID[String(course.id)] ?? [],
+        slots: course.slots?.length ? course.slots : TIMETABLE_BY_COURSE_ID[String(course.id)] ?? [],
       })),
     [allCourses],
+  );
+
+  const cartCourses = useMemo(
+    () => timetableCourses.filter((course) => cartIds.includes(String(course.id))),
+    [cartIds, timetableCourses],
   );
 
   const placedCourses = useMemo(
@@ -86,11 +110,49 @@ export function TimetableFullScreen({ navigation }: Props) {
   );
 
   const visiblePeriods = useMemo(() => {
-    const maxPeriod = placedEntries.reduce((max, e) => Math.max(max, e.endPeriod), 9);
-    return PERIODS.slice(0, maxPeriod);
+    const maxPeriod = placedEntries.reduce((max, e) => Math.max(max, e.endPeriod), DEFAULT_VISIBLE_PERIOD);
+    return PERIODS.slice(0, Math.min(maxPeriod, PERIODS.length));
   }, [placedEntries]);
+  const lastVisiblePeriod = visiblePeriods[visiblePeriods.length - 1]?.period ?? DEFAULT_VISIBLE_PERIOD;
 
   const totalCredits = placedCourses.reduce((sum, c) => sum + (c.credits ?? 3), 0);
+  const handleToggleCourse = useCallback(async (course: TimetableCourse) => {
+    const courseId = String(course.id);
+    const isSelected = selectedIds.includes(courseId);
+    if (!isSelected && hasConflict(courseId, selectedIds, cartCourses)) {
+      setMessage(`${course.name}: 시간이 겹치는 강의가 있어요.`);
+      return;
+    }
+
+    const nextIds = isSelected
+      ? selectedIds.filter((id) => id !== courseId)
+      : [...selectedIds, courseId];
+    const nextCourses = cartCourses.filter((item) => nextIds.includes(String(item.id)));
+    const nextCredits = nextCourses.reduce((sum, item) => sum + (item.credits ?? 3), 0);
+
+    if (!isSelected && nextCredits > MAX_TIMETABLE_CREDITS) {
+      setMessage(`최대 ${MAX_TIMETABLE_CREDITS}학점까지만 넣을 수 있어요.`);
+      return;
+    }
+
+    setSelectedIds(nextIds);
+    await saveSelectedTimetableIds(nextIds);
+    setMessage(isSelected ? `${course.name}을 시간표에서 뺐어요.` : `${course.name}을 시간표에 넣었어요.`);
+  }, [cartCourses, selectedIds]);
+
+  const handleRemoveFromCart = useCallback(async (course: TimetableCourse) => {
+    const courseId = String(course.id);
+    const nextCartIds = cartIds.filter((id) => id !== courseId);
+    const nextSelectedIds = selectedIds.filter((id) => id !== courseId);
+
+    setCartIds(nextCartIds);
+    setSelectedIds(nextSelectedIds);
+    await Promise.all([
+      saveTimetableCartIds(nextCartIds),
+      saveSelectedTimetableIds(nextSelectedIds),
+    ]);
+    setMessage(`${course.name}을 담은 강의에서 삭제했어요.`);
+  }, [cartIds, selectedIds]);
 
   if (isLoading) {
     return (
@@ -106,11 +168,11 @@ export function TimetableFullScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <PressableScale style={styles.backButton} onPress={() => navigation.goBack()}>
-          <View style={styles.backArrow} />
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </PressableScale>
         <Text style={styles.headerTitle}>내 시간표</Text>
         <View style={styles.creditsBadge}>
-          <Text style={styles.creditsText}>총 {totalCredits}학점</Text>
+          <Text style={styles.creditsText}>{selectedIds.length}/{cartCourses.length}</Text>
         </View>
       </View>
 
@@ -118,7 +180,7 @@ export function TimetableFullScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {placedCourses.length === 0 ? (
+        {cartCourses.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>담은 강의가 없어요</Text>
             <Text style={styles.emptyDesc}>시간표 탭에서 추천 조합을 골라보세요.</Text>
@@ -136,7 +198,7 @@ export function TimetableFullScreen({ navigation }: Props) {
                 <View style={[styles.timeColumn, { height: visiblePeriods.length * PERIOD_HEIGHT }]}>
                   {visiblePeriods.map((period) => (
                     <View key={`period-${period.period}`} style={styles.timeCell}>
-                      <Text style={styles.timeText}>{period.time}</Text>
+                      <Text style={styles.timeText}>{period.period % 2 === 1 ? period.time : ''}</Text>
                     </View>
                   ))}
                 </View>
@@ -146,10 +208,13 @@ export function TimetableFullScreen({ navigation }: Props) {
                     style={[styles.dayColumn, { height: visiblePeriods.length * PERIOD_HEIGHT }]}
                   >
                     {visiblePeriods.map((period) => (
-                      <View key={`grid-${day}-${period.period}`} style={styles.gridLine} />
+                      <View
+                        key={`grid-${day}-${period.period}`}
+                        style={period.period % 2 === 1 ? styles.gridLine : styles.gridSpacer}
+                      />
                     ))}
                     {placedEntries
-                      .filter((entry) => entry.day === day && entry.startPeriod <= visiblePeriods.length)
+                      .filter((entry) => entry.day === day && entry.startPeriod <= lastVisiblePeriod)
                       .map((entry) => (
                         <View
                           key={`${entry.courseId}-${day}-${entry.startPeriod}`}
@@ -158,7 +223,7 @@ export function TimetableFullScreen({ navigation }: Props) {
                             {
                               top: (entry.startPeriod - 1) * PERIOD_HEIGHT + 4,
                               height:
-                                Math.min(entry.endPeriod, visiblePeriods.length) * PERIOD_HEIGHT -
+                                Math.min(entry.endPeriod, lastVisiblePeriod) * PERIOD_HEIGHT -
                                 (entry.startPeriod - 1) * PERIOD_HEIGHT -
                                 8,
                               backgroundColor: entry.backgroundColor,
@@ -179,35 +244,82 @@ export function TimetableFullScreen({ navigation }: Props) {
               </View>
             </View>
 
-            <Text style={styles.courseListTitle}>담은 강의 목록</Text>
+            <View style={styles.courseListHeader}>
+              <Text style={styles.courseListTitle}>담은 강의 목록</Text>
+              <Text style={styles.courseListMeta}>{totalCredits}/{MAX_TIMETABLE_CREDITS}학점</Text>
+            </View>
+            {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
             <View style={styles.courseList}>
-              {placedCourses.map((course, index) => (
-                <PressableScale
-                  key={`course-${course.id}`}
-                  style={styles.courseCard}
-                  onPress={() => navigation.navigate({ name: 'CourseDetail', courseId: course.id })}
-                >
-                  <View style={[styles.courseColor, { backgroundColor: BLOCK_COLORS[index % BLOCK_COLORS.length] }]}>
-                    <View style={[styles.courseColorInner, { backgroundColor: BLOCK_TEXT_COLORS[index % BLOCK_TEXT_COLORS.length] }]} />
-                  </View>
-                  <View style={styles.courseCopy}>
-                    <Text style={styles.courseName} numberOfLines={1}>{course.name}</Text>
-                    <Text style={styles.courseMeta} numberOfLines={1}>
-                      {course.professor} 교수 · {course.slots[0]?.location ?? '강의실 미정'}
-                    </Text>
-                  </View>
-                  <View style={styles.courseCredit}>
+              {cartCourses.map((course) => {
+                const isSelected = selectedIds.includes(String(course.id));
+                const accent = getCourseScopeColor(course, user?.department);
+                const slotText = formatSlotText(course.slots);
+                return (
+                  <View
+                    key={`course-${course.id}`}
+                    style={[styles.courseCard, isSelected ? styles.courseCardSelected : null]}
+                  >
+                    <View style={[styles.courseStripe, { backgroundColor: accent }]} />
+                    <PressableScale
+                      style={styles.courseToggleArea}
+                      onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: course.id })}
+                    >
+                      <View style={styles.courseCopy}>
+                        <Text style={styles.courseName} numberOfLines={1}>{course.name}</Text>
+                        <Text style={styles.courseMeta} numberOfLines={1}>
+                          {course.professor} 교수{slotText ? ` · ${slotText}` : ''}
+                        </Text>
+                        <Text style={styles.courseRating}>★ {course.rating.toFixed(1)} · 리뷰 {course.reviewCount}개</Text>
+                      </View>
+                    </PressableScale>
                     <Text style={styles.courseCreditText}>{course.credits ?? 3}학점</Text>
+                    <PressableScale style={[styles.toggleButton, isSelected ? styles.toggleButtonActive : null]} onPress={() => handleToggleCourse(course)}>
+                      <Ionicons name={isSelected ? 'checkmark' : 'add'} size={20} color={isSelected ? '#ffffff' : '#5E6E85'} />
+                    </PressableScale>
+                    <PressableScale style={styles.removeButton} onPress={() => handleRemoveFromCart(course)}>
+                      <Ionicons name="close" size={20} color="#7D8898" />
+                    </PressableScale>
                   </View>
-                  <View style={styles.courseChevron} />
-                </PressableScale>
-              ))}
+                );
+              })}
             </View>
           </>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function formatSlotText(slots: TimetableSlot[]) {
+  return slots.map((slot) => `${slot.day} ${formatPeriodRange(slot.startPeriod, slot.endPeriod)}`).join(' · ');
+}
+
+function getCourseScopeColor(course: Course, userDepartment?: string) {
+  if (course.type.includes('교양') || course.department.includes('교양')) {
+    return COURSE_SCOPE_COLORS.general;
+  }
+  if (userDepartment && course.department === userDepartment) {
+    return COURSE_SCOPE_COLORS.major;
+  }
+  return COURSE_SCOPE_COLORS.other;
+}
+
+function hasConflict(courseId: string, selectedIds: string[], courses: TimetableCourse[]) {
+  const course = courses.find((c) => String(c.id) === courseId);
+  if (!course) return false;
+
+  const selectedSlots = courses
+    .filter((c) => selectedIds.includes(String(c.id)))
+    .flatMap((c) => c.slots);
+
+  return course.slots.some((slot) =>
+    selectedSlots.some(
+      (selectedSlot) =>
+        selectedSlot.day === slot.day &&
+        slot.startPeriod <= selectedSlot.endPeriod &&
+        selectedSlot.startPeriod <= slot.endPeriod,
+    ),
   );
 }
 
@@ -230,35 +342,23 @@ const styles = StyleSheet.create({
   backButton: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-  },
-  backArrow: {
-    width: 9,
-    height: 9,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: '#111827',
-    transform: [{ rotate: '45deg' }, { translateX: 2 }],
+    borderColor: colors.cardBorder,
   },
   headerTitle: {
     flex: 1,
-    color: '#111827',
-    fontSize: 20,
-    lineHeight: 25,
-    fontWeight: '900',
-    letterSpacing: -0.7,
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   creditsBadge: {
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 7,
     backgroundColor: colors.primary,
@@ -266,7 +366,7 @@ const styles = StyleSheet.create({
   creditsText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.3,
   },
   content: {
@@ -280,29 +380,25 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyTitle: {
-    color: '#111827',
+    color: '#111318',
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.5,
   },
   emptyDesc: {
-    color: '#65738a',
+    color: '#5E6E85',
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
   boardCard: {
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
+    borderColor: colors.cardBorder,
     paddingHorizontal: 12,
     paddingTop: 14,
     paddingBottom: 12,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
   },
   dayHeaderRow: {
     flexDirection: 'row',
@@ -314,9 +410,9 @@ const styles = StyleSheet.create({
   },
   dayHeaderText: {
     flex: 1,
-    color: '#111827',
+    color: '#111318',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     textAlign: 'center',
   },
   boardBody: {
@@ -333,7 +429,7 @@ const styles = StyleSheet.create({
     color: '#8793a8',
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: '900',
+    fontWeight: '600',
   },
   dayColumn: {
     flex: 1,
@@ -346,6 +442,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#edf1f7',
   },
+  gridSpacer: {
+    height: PERIOD_HEIGHT,
+  },
   scheduleBlock: {
     position: 'absolute',
     left: 3,
@@ -355,96 +454,131 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: '#E5E8EF',
   },
   blockTitle: {
     fontSize: 10,
     lineHeight: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.35,
   },
   blockMeta: {
     marginTop: 5,
-    color: '#65738a',
+    color: '#5E6E85',
     fontSize: 9,
     lineHeight: 11,
-    fontWeight: '900',
+    fontWeight: '600',
   },
-  courseListTitle: {
-    color: '#111827',
-    fontSize: 19,
-    lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -0.6,
+  courseListHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: -4,
   },
+  courseListTitle: {
+    color: '#111318',
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+  },
+  courseListMeta: {
+    color: '#8A96AA',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    letterSpacing: -0.25,
+  },
+  messageText: {
+    marginTop: -12,
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: -0.25,
+  },
   courseList: {
-    gap: 10,
+    borderRadius: spacing.radius,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   courseCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    minHeight: 92,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(17,24,39,0.07)',
   },
-  courseColor: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  courseStripe: {
+    width: 4,
+    alignSelf: 'stretch',
   },
-  courseColorInner: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
-    transform: [{ rotate: '45deg' }],
+  courseCardSelected: {
+    backgroundColor: colors.surface,
+  },
+  courseToggleArea: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 14,
+    paddingLeft: 14,
+    paddingRight: 8,
   },
   courseCopy: {
     flex: 1,
     gap: 4,
   },
   courseName: {
-    color: '#111827',
+    color: '#111318',
     fontSize: 15,
     lineHeight: 19,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: -0.4,
   },
   courseMeta: {
-    color: '#65738a',
+    color: '#8A96AA',
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     letterSpacing: -0.25,
   },
-  courseCredit: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#eef4ff',
+  courseRating: {
+    color: '#A8B4C4',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   courseCreditText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '900',
+    color: '#5E6E85',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
     letterSpacing: -0.25,
+    marginRight: 12,
   },
-  courseChevron: {
-    width: 8,
-    height: 8,
-    borderRightWidth: 2,
-    borderTopWidth: 2,
-    borderColor: '#8f9caf',
-    transform: [{ rotate: '45deg' }],
+  toggleButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F1F4F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  removeButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F7F8FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
 });

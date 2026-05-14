@@ -1,5 +1,11 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { deleteAccount as deleteAccountRequest, login as loginRequest, signup as signupRequest, updateProfile as updateProfileRequest } from '../lib/api/auth';
+import {
+  deleteAccount as deleteAccountRequest,
+  fetchCurrentUser,
+  login as loginRequest,
+  signup as signupRequest,
+  updateProfile as updateProfileRequest,
+} from '../lib/api/auth';
 import { setUnauthorizedHandler } from '../lib/api/client';
 import { clearAuthTokens, getAccessToken, getCurrentUser } from '../lib/storage/tokenStorage';
 import { User } from '../types/models';
@@ -32,7 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const [token, storedUser] = await Promise.all([getAccessToken(), getCurrentUser()]);
         if (token && storedUser) {
-          setUser(storedUser);
+          try {
+            const freshUser = await fetchCurrentUser();
+            setUser(freshUser);
+          } catch {
+            setUser(storedUser);
+          }
           return;
         }
 
