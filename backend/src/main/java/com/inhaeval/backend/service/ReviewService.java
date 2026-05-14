@@ -90,7 +90,7 @@ public class ReviewService {
 
     // 2. 특정 강의의 리뷰 목록 조회 (정렬 기능 지원!)
     @Transactional(readOnly = true)
-    public List<ReviewResponse> getReviewsByCourseId(Long courseId, String sortBy) {
+    public List<ReviewResponse> getReviewsByCourseId(Long courseId, String sortBy, String viewerEmail) {
         List<Review> reviews;
         
         // 프론트에서 넘어온 "sortBy" 글자에 따라 우리가 아까 Repository에 심어둔 필살기 쿼리 중 하나를 고릅니다.
@@ -104,8 +104,15 @@ public class ReviewService {
             reviews = reviewRepository.findByCourseIdOrderByCreatedAtDesc(courseId); // 기본값: 최신순
         }
 
+        Member viewer = viewerEmail == null
+                ? null
+                : memberRepository.findByEmail(viewerEmail).orElse(null);
+
         return reviews.stream()
-                .map(ReviewResponse::from)
+                .map(review -> ReviewResponse.from(
+                        review,
+                        viewer != null && reviewLikeRepository.findByMemberAndReview(viewer, review).isPresent()
+                ))
                 .toList();
     }
 
@@ -151,6 +158,7 @@ public class ReviewService {
                             // 이미 좋아요 누른 상태 → 취소
                             reviewLikeRepository.delete(like);
                             review.removeLike();
+                            revokeLikePointIfEligible(review, member);
                         },
                         () -> {
                             // 좋아요 누르지 않은 상태 → 추가
@@ -159,7 +167,38 @@ public class ReviewService {
                                     .review(review)
                                     .build());
                             review.addLike();
+                            awardLikePointIfEligible(review, member);
                         }
                 );
+    }
+
+    private void awardLikePointIfEligible(Review review, Member liker) {
+        Member author = review.getMember();
+        if (author.getId().equals(liker.getId())) {
+            return;
+        }
+
+        author.addPoints(1);
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(author)
+                .review(review)
+                .description("강의평 좋아요 (" + review.getCourse().getName() + ")")
+                .points(1)
+                .build());
+    }
+
+    private void revokeLikePointIfEligible(Review review, Member liker) {
+        Member author = review.getMember();
+        if (author.getId().equals(liker.getId())) {
+            return;
+        }
+
+        author.deductPoints(1);
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(author)
+                .review(review)
+                .description("강의평 좋아요 (" + review.getCourse().getName() + ")")
+                .points(-1)
+                .build());
     }
 }
