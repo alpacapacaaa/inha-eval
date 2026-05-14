@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
@@ -23,14 +24,6 @@ interface Props {
   };
 }
 
-const COMMENT_THEMES = [
-  { accent: '#e8c35d', surface: '#fff9e9', quote: '#f2d77f' },
-  { accent: '#9f8deb', surface: '#f6f2ff', quote: '#b6a7f2' },
-  { accent: '#78bba8', surface: '#f0fbf7', quote: '#91cfbd' },
-  { accent: '#8bb6f1', surface: '#f1f7ff', quote: '#9fc3f5' },
-  { accent: '#ee9fb8', surface: '#fff2f7', quote: '#f2a8bf' },
-] as const;
-
 export function CourseDetailScreen({ navigation, route }: Props) {
   const { isAuthenticated } = useAuth();
   const insets = useSafeAreaInsets();
@@ -41,7 +34,6 @@ export function CourseDetailScreen({ navigation, route }: Props) {
   const [errorMessage, setErrorMessage] = useState('');
   const [visibleCount, setVisibleCount] = useState(8);
   const [sortBy, setSortBy] = useState<'latest' | 'rating'>('latest');
-  const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
 
   const loadCourseDetail = async (sort: 'latest' | 'rating' = sortBy) => {
     const requestId = ++requestIdRef.current;
@@ -77,7 +69,6 @@ export function CourseDetailScreen({ navigation, route }: Props) {
     setVisibleCount(8);
     loadCourseDetail('latest');
     setSortBy('latest');
-    setLikedIds(new Set());
   }, [route.courseId]);
 
   useEffect(() => {
@@ -86,7 +77,6 @@ export function CourseDetailScreen({ navigation, route }: Props) {
   }, [sortBy]);
 
   const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
-  const columns = useMemo(() => splitColumns(visibleReviews), [visibleReviews]);
   const hasMore = visibleCount < reviews.length;
 
   const handleToggleLike = async (reviewId: number) => {
@@ -95,20 +85,26 @@ export function CourseDetailScreen({ navigation, route }: Props) {
       return;
     }
 
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(reviewId)) { next.delete(reviewId); } else { next.add(reviewId); }
-      return next;
-    });
+    const previousReview = reviews.find((review) => review.id === reviewId);
+    if (!previousReview) {
+      return;
+    }
+
+    const nextLiked = !previousReview.likedByMe;
+    const nextLikes = Math.max(0, previousReview.likes + (nextLiked ? 1 : -1));
+
+    setReviews((current) => current.map((review) => (
+      review.id === reviewId
+        ? { ...review, likedByMe: nextLiked, likes: nextLikes }
+        : review
+    )));
 
     try {
       await toggleReviewLike(reviewId);
     } catch {
-      setLikedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(reviewId)) { next.delete(reviewId); } else { next.add(reviewId); }
-        return next;
-      });
+      setReviews((current) => current.map((review) => (
+        review.id === reviewId ? previousReview : review
+      )));
     }
   };
 
@@ -145,34 +141,28 @@ export function CourseDetailScreen({ navigation, route }: Props) {
       >
         <View style={styles.topBar}>
           <PressableScale style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backGlyph}>‹</Text>
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
           </PressableScale>
 
           <PressableScale style={styles.writeButton} onPress={handleOpenReviewWrite}>
-            <PencilIcon />
+            <Ionicons name="pencil-outline" size={15} color="#ffffff" />
             <Text style={styles.writeButtonText}>강의평 쓰기</Text>
           </PressableScale>
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.heroCopy}>
-            <Text style={styles.courseTitle}>{course.name}</Text>
-            <Text style={styles.professorName}>{course.professor} 교수님</Text>
-            <View style={styles.commentCountRow}>
-              <ChatIcon />
-              <Text style={styles.commentCountText}>
-                학생들이 남긴 코멘트 {course.reviewCount || reviews.length}개
-              </Text>
-            </View>
-          </View>
-
-          <CommentIllustration />
+          <Text style={styles.courseTitle}>{course.name}</Text>
+          <Text style={styles.professorName}>
+            {course.professor} 교수님 · {course.department || '개설학과 미정'}
+          </Text>
+          <Text style={styles.commentCountText}>
+            학생들이 남긴 코멘트 {course.reviewCount || reviews.length}개
+          </Text>
         </View>
 
         <View style={styles.divider} />
 
         <View style={styles.noticeRow}>
-          <SparkleIcon />
           <Text style={styles.noticeText}>익명으로 작성된 실제 수강생 코멘트입니다.</Text>
         </View>
 
@@ -200,20 +190,16 @@ export function CourseDetailScreen({ navigation, route }: Props) {
             </PressableScale>
           </View>
         ) : (
-          <View style={styles.commentColumns}>
-            {columns.map((column, columnIndex) => (
-              <View key={`column-${columnIndex}`} style={styles.commentColumn}>
-                {column.map(({ review, index }) => (
-                  <CommentCard
-                    key={review.id}
-                    review={review}
-                    index={index}
-                    isLiked={likedIds.has(review.id)}
-                    likeCount={review.likes + (likedIds.has(review.id) ? 1 : 0)}
-                    onBookmark={() => handleToggleLike(review.id)}
-                  />
-                ))}
-              </View>
+          <View style={styles.commentList}>
+            {visibleReviews.map((review, index) => (
+              <CommentCard
+                key={review.id}
+                review={review}
+                index={index}
+                isLiked={Boolean(review.likedByMe)}
+                likeCount={review.likes}
+                onBookmark={() => handleToggleLike(review.id)}
+              />
             ))}
           </View>
         )}
@@ -221,7 +207,7 @@ export function CourseDetailScreen({ navigation, route }: Props) {
         {hasMore ? (
           <PressableScale style={styles.moreButton} onPress={() => setVisibleCount((count) => count + 8)}>
             <Text style={styles.moreButtonText}>더 많은 코멘트 보기</Text>
-            <ChevronDownIcon />
+            <Ionicons name="chevron-down" size={20} color="#51627d" />
           </PressableScale>
         ) : null}
       </ScrollView>
@@ -242,36 +228,35 @@ function CommentCard({
   likeCount: number;
   onBookmark: () => void;
 }) {
-  const theme = COMMENT_THEMES[index % COMMENT_THEMES.length];
   const text = review.oneLineTip || review.content || '아직 상세 코멘트가 없습니다.';
   const [expanded, setExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
+  const shouldShowExpand = isTruncated || text.length > 120;
 
   const filled = Math.round(review.rating);
 
   return (
-    <View style={[styles.commentCard, { backgroundColor: theme.surface }]}>
+    <View style={styles.commentCard}>
       <View style={styles.ratingRow}>
-        <Text style={[styles.ratingStars, { color: theme.accent }]}>
+        <Text style={styles.ratingStars}>
           {'★'.repeat(filled)}{'☆'.repeat(Math.max(0, 5 - filled))}
         </Text>
-        <Text style={[styles.ratingValue, { color: theme.accent }]}>{review.rating.toFixed(1)}</Text>
+        <Text style={styles.ratingValue}>{review.rating.toFixed(1)}</Text>
       </View>
 
-      <Text style={[styles.quoteMark, { color: theme.quote }]}>”</Text>
       <Text
         style={styles.commentText}
-        numberOfLines={expanded ? undefined : 5}
+        numberOfLines={expanded ? undefined : 4}
         onTextLayout={(e) => {
-          if (!expanded) setIsTruncated(e.nativeEvent.lines.length >= 5);
+          if (!expanded) setIsTruncated(e.nativeEvent.lines.length >= 4);
         }}
       >
         {text}
       </Text>
 
-      {!expanded && isTruncated ? (
-        <PressableScale onPress={() => setExpanded(true)}>
-          <Text style={[styles.expandText, { color: theme.accent }]}>더 보기</Text>
+      {shouldShowExpand ? (
+        <PressableScale style={styles.expandButton} onPress={() => setExpanded((current) => !current)}>
+          <Text style={styles.expandText}>{expanded ? '접기' : '더 보기'}</Text>
         </PressableScale>
       ) : null}
 
@@ -280,86 +265,14 @@ function CommentCard({
           style={[styles.likeButton, isLiked ? styles.likeButtonActive : null]}
           onPress={onBookmark}
         >
-          <HeartIcon color={isLiked ? theme.accent : '#c8d2e0'} />
-          <Text style={[styles.likeCount, { color: isLiked ? theme.accent : '#b8c4d4' }]}>
-            {likeCount}
-          </Text>
+          <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={17} color={isLiked ? colors.primary : '#AAB6C3'} />
+          <Text style={[styles.likeCount, isLiked ? styles.likeCountActive : null]}>{likeCount}</Text>
         </PressableScale>
       </View>
     </View>
   );
 }
 
-function splitColumns(reviews: Review[]) {
-  const columns: Array<Array<{ review: Review; index: number }>> = [[], []];
-
-  reviews.forEach((review, index) => {
-    columns[index % 2].push({ review, index });
-  });
-
-  return columns;
-}
-
-function PencilIcon() {
-  return (
-    <View style={styles.pencilIcon}>
-      <View style={styles.pencilBody} />
-      <View style={styles.pencilTip} />
-    </View>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <View style={styles.chatIcon}>
-      <View style={styles.chatDot} />
-      <View style={styles.chatDot} />
-      <View style={styles.chatDot} />
-    </View>
-  );
-}
-
-function SparkleIcon() {
-  return (
-    <View style={styles.sparkleIcon}>
-      <View style={styles.sparkleVertical} />
-      <View style={styles.sparkleHorizontal} />
-    </View>
-  );
-}
-
-function CommentIllustration() {
-  return (
-    <View style={styles.heroIllustration}>
-      <View style={styles.browserCard}>
-        <View style={styles.browserTop} />
-        <View style={styles.browserLineShort} />
-        <View style={styles.browserLineLong} />
-      </View>
-      <View style={styles.chatBubbleLarge}>
-        <View style={styles.heroDot} />
-        <View style={styles.heroDot} />
-        <View style={styles.heroDot} />
-      </View>
-      <View style={styles.illustrationSparkleA} />
-      <View style={styles.illustrationSparkleB} />
-    </View>
-  );
-}
-
-function HeartIcon({ color }: { color: string }) {
-  return (
-    <View style={styles.heartIcon}>
-      <View style={[styles.heartLeft, { backgroundColor: color }]} />
-      <View style={[styles.heartRight, { backgroundColor: color }]} />
-      <View style={[styles.heartBottom, { backgroundColor: color }]} />
-    </View>
-  );
-}
-
-function ChevronDownIcon() {
-  return <Text style={styles.chevronDown}>⌄</Text>;
-}
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -375,7 +288,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.page,
-    gap: 22,
+    gap: 18,
   },
   topBar: {
     flexDirection: 'row',
@@ -383,320 +296,150 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   backButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    width: 42,
+    height: 42,
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOpacity: 0.09,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  backGlyph: {
-    color: '#101827',
-    fontSize: 42,
-    lineHeight: 42,
-    fontWeight: '500',
-    marginTop: -5,
-    marginLeft: -2,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   writeButton: {
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: '#101827',
-    paddingHorizontal: 20,
+    minHeight: 42,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    shadowColor: '#101827',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    gap: 8,
   },
   writeButtonText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 19,
-    fontWeight: '900',
-    letterSpacing: -0.35,
-  },
-  pencilIcon: {
-    width: 20,
-    height: 20,
-    transform: [{ rotate: '-38deg' }],
-  },
-  pencilBody: {
-    position: 'absolute',
-    left: 7,
-    top: 1,
-    width: 7,
-    height: 16,
-    borderRadius: 2,
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  pencilTip: {
-    position: 'absolute',
-    left: 7,
-    bottom: -1,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 4,
-    borderRightWidth: 4,
-    borderTopWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#ffffff',
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   hero: {
-    minHeight: 188,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.group,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: 14,
+    gap: 10,
   },
   courseTitle: {
-    color: '#101827',
-    fontSize: 34,
-    lineHeight: 42,
-    fontWeight: '900',
-    letterSpacing: -1.6,
+    color: colors.text,
+    fontSize: 26,
+    lineHeight: 34,
+    fontWeight: '800',
+    letterSpacing: -0.8,
   },
   professorName: {
-    color: '#50627d',
-    fontSize: 18,
-    lineHeight: 23,
+    color: colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 21,
     fontWeight: '600',
-    letterSpacing: -0.45,
-  },
-  commentCountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 6,
+    letterSpacing: -0.4,
   },
   commentCountText: {
-    color: '#586a86',
-    fontSize: 15,
+    color: colors.textMuted,
+    fontSize: 14,
     lineHeight: 20,
-    fontWeight: '600',
-    letterSpacing: -0.35,
-  },
-  chatIcon: {
-    width: 25,
-    height: 21,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#718098',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  chatDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#718098',
-  },
-  heroIllustration: {
-    width: 168,
-    height: 150,
-    position: 'relative',
-  },
-  browserCard: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    width: 106,
-    height: 82,
-    borderRadius: 10,
-    backgroundColor: 'rgba(226,236,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(151,183,246,0.38)',
-    transform: [{ rotate: '4deg' }],
-  },
-  browserTop: {
-    height: 18,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    backgroundColor: 'rgba(104,145,230,0.28)',
-  },
-  browserLineShort: {
-    width: 38,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(104,145,230,0.20)',
-    marginTop: 17,
-    marginLeft: 18,
-  },
-  browserLineLong: {
-    width: 58,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(104,145,230,0.16)',
-    marginTop: 10,
-    marginLeft: 18,
-  },
-  chatBubbleLarge: {
-    position: 'absolute',
-    left: 6,
-    bottom: 18,
-    width: 88,
-    height: 66,
-    borderRadius: 18,
-    backgroundColor: '#7ea8ff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    shadowColor: '#2f6edb',
-    shadowOpacity: 0.20,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  heroDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.84)',
-  },
-  illustrationSparkleA: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    right: 8,
-    bottom: 26,
-    backgroundColor: '#a9c4ff',
-  },
-  illustrationSparkleB: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    left: 42,
-    top: 18,
-    backgroundColor: '#c3d5ff',
+    fontWeight: '500',
+    letterSpacing: -0.3,
   },
   divider: {
     height: 1,
-    backgroundColor: '#dce4f0',
+    backgroundColor: colors.line,
   },
   noticeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  sparkleIcon: {
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sparkleVertical: {
-    position: 'absolute',
-    width: 4,
-    height: 18,
-    borderRadius: 2,
-    backgroundColor: '#d6c486',
-  },
-  sparkleHorizontal: {
-    position: 'absolute',
-    width: 18,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#d6c486',
-  },
   noticeText: {
     flex: 1,
-    color: '#8b96a8',
-    fontSize: 14,
+    color: colors.textMuted,
+    fontSize: 13,
     lineHeight: 19,
     fontWeight: '500',
   },
-  commentColumns: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'flex-start',
-  },
-  commentColumn: {
-    flex: 1,
-    gap: 14,
+  commentList: {
+    gap: 12,
   },
   commentCard: {
-    minHeight: 208,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingTop: 22,
-    paddingBottom: 18,
-    gap: 14,
-    shadowColor: '#16499a',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)',
-  },
-  quoteMark: {
-    fontSize: 38,
-    lineHeight: 31,
-    fontWeight: '900',
+    borderColor: colors.cardBorder,
+    paddingHorizontal: spacing.card,
+    paddingTop: spacing.card,
+    paddingBottom: 13,
+    gap: 12,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
   },
   ratingStars: {
-    fontSize: 13,
-    letterSpacing: 1,
+    color: colors.primary,
+    fontSize: 11,
+    lineHeight: 16,
+    letterSpacing: 0.8,
   },
   ratingValue: {
-    fontSize: 12,
-    fontWeight: '700',
+    color: colors.primary,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '800',
     letterSpacing: -0.2,
   },
   commentText: {
-    color: '#1c2a3a',
-    fontSize: 15,
+    color: colors.text,
+    fontSize: 14,
     lineHeight: 23,
     fontWeight: '500',
     letterSpacing: -0.3,
   },
+  expandButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+  },
   expandText: {
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: -0.2,
-    marginTop: -4,
   },
   cardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: 10,
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: colors.separator,
   },
   likeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    minWidth: 68,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    borderRadius: 18,
+    backgroundColor: colors.fill,
   },
   likeButtonActive: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: colors.primarySoft,
   },
   likeCount: {
+    color: colors.textTertiary,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: -0.2,
+  },
+  likeCountActive: {
+    color: colors.primary,
   },
   sortRow: {
     flexDirection: 'row',
@@ -704,110 +447,69 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
   sortChip: {
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 9,
-    backgroundColor: 'rgba(255,255,255,0.76)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.92)',
+    borderColor: colors.line,
   },
   sortChipActive: {
-    backgroundColor: '#101827',
-    borderColor: '#101827',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   sortChipText: {
-    color: '#65738a',
+    color: colors.textSecondary,
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   sortChipTextActive: {
     color: '#ffffff',
   },
-  heartIcon: {
-    width: 20,
-    height: 18,
-    position: 'relative',
-  },
-  heartLeft: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    left: 0,
-    top: 0,
-  },
-  heartRight: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    right: 0,
-    top: 0,
-  },
-  heartBottom: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    left: 3,
-    top: 5,
-    transform: [{ rotate: '45deg' }],
-  },
   moreButton: {
-    minHeight: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    minHeight: 50,
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,233,244,0.96)',
+    borderColor: colors.cardBorder,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    shadowColor: '#16499a',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
   },
   moreButtonText: {
-    color: '#51627d',
-    fontSize: 15,
+    color: colors.textSecondary,
+    fontSize: 14,
     lineHeight: 19,
     fontWeight: '600',
-    letterSpacing: -0.35,
-  },
-  chevronDown: {
-    color: '#51627d',
-    fontSize: 28,
-    lineHeight: 28,
-    fontWeight: '500',
-    marginTop: -8,
+    letterSpacing: -0.3,
   },
   emptyCard: {
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,233,244,0.96)',
+    borderColor: colors.cardBorder,
     padding: spacing.page,
     gap: spacing.related,
   },
   emptyTitle: {
-    color: '#101827',
+    color: colors.text,
     fontSize: 22,
     lineHeight: 27,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.8,
   },
   emptyBody: {
-    color: '#6b7280',
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 21,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   emptyButton: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
-    backgroundColor: '#101827',
+    borderRadius: 8,
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -815,6 +517,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     lineHeight: 16,
-    fontWeight: '900',
+    fontWeight: '700',
   },
 });

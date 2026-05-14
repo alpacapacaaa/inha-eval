@@ -12,6 +12,7 @@ interface AuthResponse {
   refreshToken?: string;
   nickname: string;
   department?: string;
+  phoneNumber?: string;
   points: number;
 }
 
@@ -28,11 +29,12 @@ interface ProfileUpdatePayload {
   department?: string;
 }
 
-async function persistSession(response: AuthResponse, email: string, fallbackDepartment?: string) {
+async function persistSession(response: AuthResponse, email: string, fallbackDepartment?: string, fallbackPhoneNumber?: string) {
   const user = {
     email,
     nickname: response.nickname,
     department: response.department ?? fallbackDepartment,
+    phoneNumber: response.phoneNumber ?? fallbackPhoneNumber,
     points: response.points,
   };
 
@@ -60,7 +62,7 @@ export async function signup(payload: SignupPayload): Promise<User> {
     body: JSON.stringify(payload),
   });
 
-  return persistSession(response, payload.email, payload.department);
+  return persistSession(response, payload.email, payload.department, payload.phoneNumber);
 }
 
 export async function updateProfile(payload: ProfileUpdatePayload): Promise<User> {
@@ -92,6 +94,22 @@ export async function updateProfile(payload: ProfileUpdatePayload): Promise<User
     email: response.email ?? currentUser?.email ?? '',
     nickname: response.nickname ?? currentUser?.nickname ?? '',
     department: response.department ?? currentUser?.department,
+    phoneNumber: response.phoneNumber ?? currentUser?.phoneNumber,
+    points: response.points ?? currentUser?.points ?? 0,
+  };
+
+  await saveCurrentUser(nextUser);
+  return nextUser;
+}
+
+export async function fetchCurrentUser(): Promise<User> {
+  const currentUser = await getCurrentUser();
+  const response = await apiRequest<User>('/api/users/me');
+  const nextUser = {
+    email: response.email ?? currentUser?.email ?? '',
+    nickname: response.nickname ?? currentUser?.nickname ?? '',
+    department: response.department ?? currentUser?.department,
+    phoneNumber: response.phoneNumber ?? currentUser?.phoneNumber,
     points: response.points ?? currentUser?.points ?? 0,
   };
 

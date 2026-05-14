@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,7 +36,7 @@ export function PointHistoryScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <PressableScale style={styles.backButton} onPress={() => navigation.goBack()}>
-          <View style={styles.backArrow} />
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </PressableScale>
         <Text style={styles.headerTitle}>포인트 내역</Text>
       </View>
@@ -71,7 +72,7 @@ export function PointHistoryScreen({ navigation }: Props) {
             {!loading && !error && history.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <View style={styles.emptyCircle}>
-                  <CoinIllustration />
+                  <Ionicons name="wallet-outline" size={48} color={colors.primary} />
                 </View>
                 <Text style={styles.emptyTitle}>아직 포인트 내역이 없어요</Text>
                 <Text style={styles.emptyDesc}>
@@ -85,14 +86,22 @@ export function PointHistoryScreen({ navigation }: Props) {
           </>
         }
         renderItem={({ item, index }) => (
-          <HistoryRow item={item} isLast={index === history.length - 1} />
+          <HistoryRow item={item} isFirst={index === 0} isLast={index === history.length - 1} />
         )}
       />
     </SafeAreaView>
   );
 }
 
-function HistoryRow({ item, isLast }: { item: PointHistoryItem; isLast: boolean }) {
+function HistoryRow({
+  item,
+  isFirst,
+  isLast,
+}: {
+  item: PointHistoryItem;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
   const isEarn = item.points >= 0;
   const date = new Date(item.date).toLocaleDateString('ko-KR', {
     month: 'long',
@@ -100,7 +109,7 @@ function HistoryRow({ item, isLast }: { item: PointHistoryItem; isLast: boolean 
   });
 
   return (
-    <View style={[styles.row, isLast ? styles.rowLast : null]}>
+    <View style={[styles.row, isFirst ? styles.rowFirst : null, isLast ? styles.rowLast : null]}>
       <View style={[styles.rowDot, { backgroundColor: isEarn ? '#dcf5e7' : '#fdecea' }]}>
         <View style={[styles.rowDotCore, { backgroundColor: isEarn ? '#34c759' : colors.danger }]} />
       </View>
@@ -115,18 +124,6 @@ function HistoryRow({ item, isLast }: { item: PointHistoryItem; isLast: boolean 
   );
 }
 
-function CoinIllustration() {
-  return (
-    <View style={styles.coinWrap}>
-      <View style={styles.coinOuter}>
-        <View style={styles.coinInner}>
-          <Text style={styles.coinText}>P</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -136,75 +133,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.page,
-    paddingBottom: 16,
-    gap: 14,
+    paddingBottom: 12,
+    gap: 10,
+    backgroundColor: colors.surface,
   },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-  },
-  backArrow: {
-    width: 9,
-    height: 9,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: '#111827',
-    transform: [{ rotate: '45deg' }, { translateX: 2 }],
+    borderColor: colors.cardBorder,
   },
   headerTitle: {
     flex: 1,
-    color: '#111827',
-    fontSize: 20,
-    lineHeight: 25,
-    fontWeight: '900',
-    letterSpacing: -0.7,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    letterSpacing: -0.35,
   },
   listContent: {
     paddingHorizontal: spacing.page,
     gap: 0,
-    paddingTop: 4,
+    paddingTop: 16,
   },
   summaryCard: {
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 22,
-    paddingVertical: 22,
-    marginBottom: 20,
-    gap: 16,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    gap: 13,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   summaryMain: {
     gap: 6,
   },
   summaryLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
+    color: '#6E7A88',
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: -0.2,
   },
   summaryPoints: {
-    color: '#ffffff',
-    fontSize: 36,
-    fontWeight: '900',
-    letterSpacing: -1.2,
-    lineHeight: 42,
+    color: '#171A1F',
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.8,
+    lineHeight: 35,
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: '#EEF1F4',
   },
   summaryStats: {
     flexDirection: 'row',
@@ -215,79 +199,87 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryStatLabel: {
-    color: 'rgba(255,255,255,0.65)',
+    color: '#8D98A6',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: -0.1,
   },
   summaryStatValue: {
-    fontSize: 17,
-    fontWeight: '900',
+    fontSize: 14,
+    fontWeight: '700',
     letterSpacing: -0.5,
   },
   summaryStatDivider: {
     width: 1,
     height: 32,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: '#EEF1F4',
     marginHorizontal: 16,
   },
   earnColor: {
-    color: '#4cd964',
+    color: '#1FAE65',
   },
   spentColor: {
-    color: '#ff6b6b',
+    color: colors.danger,
   },
   listLabel: {
-    color: '#65738a',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginBottom: 12,
+    color: '#5E6E85',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.1,
+    marginBottom: 8,
+    marginTop: 4,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingVertical: 16,
+    gap: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#edf2f8',
+    borderBottomColor: '#EEF1F4',
   },
   rowLast: {
     borderBottomWidth: 0,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  rowFirst: {
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
   rowDot: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   rowDotCore: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   rowCopy: {
     flex: 1,
     gap: 4,
   },
   rowDesc: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#111318',
+    fontSize: 13,
+    fontWeight: '600',
     letterSpacing: -0.3,
   },
   rowDate: {
     color: '#9aa5b8',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '500',
     letterSpacing: -0.2,
   },
   rowPoints: {
-    fontSize: 15,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.4,
   },
   emptyWrap: {
@@ -296,51 +288,25 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   emptyCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
-  coinWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinOuter: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 3,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinInner: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '900',
-  },
   emptyTitle: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '900',
+    color: '#111318',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: -0.5,
   },
   emptyDesc: {
-    color: '#65738a',
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '700',
+    color: '#5E6E85',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '500',
     letterSpacing: -0.3,
     textAlign: 'center',
   },

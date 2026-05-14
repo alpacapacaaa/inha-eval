@@ -26,14 +26,21 @@ export interface CreateReviewPayload {
   examInfo?: string;
   recommendFor?: string[];
   notRecommendFor?: string[];
+  badges?: string[];
+  examMidtermInfo?: string;
+  examFinalInfo?: string;
+  examAssignmentInfo?: string;
+  examQuizInfo?: string;
+  pastExamHelpfulness?: string;
+  scopePredictability?: string;
+  studyResources?: string[];
+  problemStyles?: string[];
+  examPrepTip?: string;
   diffScore?: number | null;
-  teachingScore?: number | null;
   gradScore?: number | null;
   workScore?: number | null;
   prerequisiteScore?: number | null;
   depthScore?: number | null;
-  timeInvestScore?: number | null;
-  attScore?: number | null;
   pastExamScore?: number | null;
 }
 

@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -73,7 +71,6 @@ interface Props {
 export function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { signIn, signUp } = useAuth();
-  const ambientMotion = useRef(new Animated.Value(0)).current;
 
   const [screen, setScreen] = useState<AuthScreen>('landing');
   const [email, setEmail] = useState('');
@@ -93,29 +90,6 @@ export function LoginScreen({ navigation }: Props) {
   useEffect(() => {
     getDepartments().then(setDeptList).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ambientMotion, {
-          toValue: 1,
-          duration: 5200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ambientMotion, {
-          toValue: 0,
-          duration: 5200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    animation.start();
-
-    return () => animation.stop();
-  }, [ambientMotion]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -299,42 +273,46 @@ export function LoginScreen({ navigation }: Props) {
   // --- Landing ---
   if (screen === 'landing') {
     return (
-      <SafeAreaView style={styles.landingSafe}>
-        <AuthBackdrop motion={ambientMotion} subtle />
+      <SafeAreaView style={styles.landingSafe} edges={['left', 'right', 'top']}>
         <View style={[styles.landingInner, { paddingBottom: insets.bottom + spacing.group }]}>
-          <View style={styles.landingTop}>
-            <Text style={styles.brandEyebrow}>INHA REVIEW</Text>
+          <View style={styles.coveringTopBar}>
+            <View style={styles.coveringBackGhost} />
+            <Text style={styles.coveringTopTitle}>인하평 시작하기</Text>
+            <PressableScale style={styles.coveringHelpButton}>
+              <Text style={styles.coveringHelpText}>문의하기</Text>
+            </PressableScale>
+          </View>
 
-            <View style={styles.landingHero}>
-              <Text style={styles.landingTitle}>
-                수강신청 전에,{'\n'}나에게 맞는{'\n'}
-                <Text style={styles.landingTitleAccent}>강의</Text>를 찾아보세요
+          <View style={styles.coveringIntro}>
+            <View style={styles.coveringMascot}>
+              <View style={styles.coveringMascotBoard}>
+                <Text style={styles.coveringMascotText}>A+</Text>
+              </View>
+              <View style={styles.coveringMascotBook} />
+            </View>
+            <View style={styles.coveringIntroCopy}>
+              <Text style={styles.coveringIntroTitle}>
+                인하대 강의평을{'\n'}확인하려면 인증이 필요해요
               </Text>
-              <Text style={styles.landingSubtitle}>
-                인하대 학생들이 남긴 강의평을 바탕으로{'\n'}나에게 맞는 강의를 큐레이션합니다.
+              <Text style={styles.coveringIntroBody}>
+                학교 이메일과 휴대폰 인증으로 안전하게 시작합니다.
               </Text>
             </View>
           </View>
 
-          <CampusScene />
-
           <View style={styles.landingActions}>
-            <View style={styles.landingMetricCard}>
-              <View style={styles.metricIcon}>
-                <View style={styles.bookLeft} />
-                <View style={styles.bookRight} />
-                <View style={styles.bookSpine} />
+            <View style={styles.coveringNoticeCard}>
+              <View style={styles.coveringNoticeIcon}>
+                <Text style={styles.coveringNoticeIconText}>✓</Text>
               </View>
               <View style={styles.metricCopy}>
-                <Text style={styles.metricCaption}>인하대 학생들의 솔직한 강의평</Text>
-                <Text style={styles.metricValueText}>
-                  수강신청 전에 꼭 확인해보세요
-                </Text>
+                <Text style={styles.metricCaption}>인하대 학생 인증</Text>
+                <Text style={styles.metricValueText}>인증 후 강의평 작성과 저장이 가능해요</Text>
               </View>
             </View>
 
             <PressableScale style={styles.landingPrimaryButton} onPress={() => goTo('login-email')}>
-              <Text style={styles.landingPrimaryButtonText}>로그인</Text>
+              <Text style={styles.landingPrimaryButtonText}>로그인하기</Text>
             </PressableScale>
             <PressableScale style={styles.landingSecondaryButton} onPress={() => goTo('signup-email')}>
               <Text style={styles.landingSecondaryButtonText}>회원가입</Text>
@@ -363,7 +341,7 @@ export function LoginScreen({ navigation }: Props) {
       case 'login-email': return '이메일을\n입력해주세요';
       case 'login-password': return '비밀번호를\n입력해주세요';
       case 'signup-email': return '이메일을\n입력해주세요';
-      case 'signup-phone': return '전화번호를\n인증해주세요';
+      case 'signup-phone': return '휴대폰 번호를 입력해 주세요';
       case 'signup-password': return '비밀번호를\n설정해주세요';
       case 'signup-nickname': return '닉네임을\n설정해주세요';
       case 'signup-department': return '학과를\n선택해주세요';
@@ -380,7 +358,7 @@ export function LoginScreen({ navigation }: Props) {
       case 'login-email': return '인하대 이메일로 로그인해요.';
       case 'login-password': return email;
       case 'signup-email': return '인하대 학생 인증을 위해 이메일을 입력해주세요.';
-      case 'signup-phone': return '입력하신 번호로 인증번호를 보내드릴게요.';
+      case 'signup-phone': return '';
       case 'signup-password': return '안전한 계정 사용을 위해 비밀번호를 설정해주세요.';
       case 'signup-nickname': return '다른 학생들에게 표시될 닉네임을 입력해주세요.';
       case 'signup-department': return '맞춤 강의 큐레이션을 위해 학과 정보를 알려주세요.';
@@ -394,7 +372,6 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'top']}>
-      <AuthBackdrop motion={ambientMotion} subtle />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -403,6 +380,10 @@ export function LoginScreen({ navigation }: Props) {
         <View style={styles.topBar}>
           <PressableScale style={styles.backBtn} onPress={goBack}>
             <View style={styles.chevron} />
+          </PressableScale>
+          <Text style={styles.stepTopTitle}>{isSignupStep ? '회원가입' : isLoginStep ? '로그인' : '계정 찾기'}</Text>
+          <PressableScale style={styles.stepHelpButton}>
+            <Text style={styles.stepHelpText}>문의하기</Text>
           </PressableScale>
         </View>
 
@@ -825,78 +806,6 @@ function StepProgress({ current, total }: { current: number; total: number }) {
   );
 }
 
-function CampusScene() {
-  return (
-    <View pointerEvents="none" style={styles.campusScene}>
-      <View style={styles.campusSkyOrb} />
-      <View style={styles.campusMist} />
-      <View style={styles.campusGround} />
-      <View style={styles.campusBuilding}>
-        <View style={styles.campusRoof} />
-        <View style={styles.campusClock}>
-          <View style={styles.campusClockDot} />
-        </View>
-        <View style={styles.campusWindowGrid}>
-          {Array.from({ length: 18 }).map((_, index) => (
-            <View key={index} style={styles.campusWindow} />
-          ))}
-        </View>
-      </View>
-      <View style={[styles.tree, styles.treeOne]}>
-        <View style={styles.treeCrown} />
-        <View style={styles.treeTrunk} />
-      </View>
-      <View style={[styles.tree, styles.treeTwo]}>
-        <View style={styles.treeCrown} />
-        <View style={styles.treeTrunk} />
-      </View>
-      <View style={[styles.tree, styles.treeThree]}>
-        <View style={styles.treeCrown} />
-        <View style={styles.treeTrunk} />
-      </View>
-      <View style={styles.campusFade} />
-    </View>
-  );
-}
-
-function AuthBackdrop({
-  motion,
-  subtle = false,
-}: {
-  motion: Animated.Value;
-  subtle?: boolean;
-}) {
-  const translateY = motion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, subtle ? -10 : -18],
-  });
-  const translateX = motion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, subtle ? 7 : 14],
-  });
-  const opacity = motion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [subtle ? 0.36 : 0.48, subtle ? 0.52 : 0.72],
-  });
-
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Animated.View
-        style={[
-          styles.backdropOrbLarge,
-          subtle ? styles.backdropOrbLargeSubtle : null,
-          {
-            opacity,
-            transform: [{ translateY }, { translateX }],
-          },
-        ]}
-      />
-      <View style={[styles.backdropOrbSmall, subtle ? styles.backdropOrbSmallSubtle : null]} />
-      <View style={styles.backdropPaperPlane} />
-    </View>
-  );
-}
-
 function LabelInput({
   label,
   value,
@@ -933,25 +842,25 @@ function LabelInput({
 
 const inputStyles = StyleSheet.create({
   wrap: {
-    gap: 12,
+    gap: 7,
   },
   label: {
-    color: '#111827',
+    color: '#111318',
     fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: -0.15,
+    lineHeight: 18,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   field: {
-    minHeight: 54,
-    backgroundColor: 'rgba(255,255,255,0.86)',
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(128,143,166,0.24)',
-    paddingHorizontal: 18,
-    paddingVertical: 15,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f1b2d',
+    minHeight: 48,
+    backgroundColor: '#F4F7FA',
+    borderRadius: 8,
+    borderWidth: 0,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#111318',
   },
 });
 
@@ -996,414 +905,181 @@ const styles = StyleSheet.create({
   // Landing
   landingSafe: {
     flex: 1,
-    backgroundColor: '#f7fbff',
+    backgroundColor: '#FFFFFF',
   },
   landingInner: {
     flex: 1,
     justifyContent: 'space-between',
     paddingHorizontal: spacing.page,
-    paddingTop: spacing.section * 2.8,
+    paddingTop: 0,
   },
-  landingTop: {
-    gap: spacing.section * 1.45,
-  },
-  brandLine: {
+  coveringTopBar: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  brandEyebrow: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 2.6,
+  coveringBackGhost: {
+    width: 58,
   },
-  brandSignal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.90)',
+  coveringTopTitle: {
+    color: '#111318',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    textAlign: 'center',
   },
-  brandSignalDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#34c759',
+  coveringHelpButton: {
+    width: 58,
+    minHeight: 34,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  brandSignalText: {
-    color: '#6a7587',
-    fontSize: 10,
+  coveringHelpText: {
+    color: '#6E7A88',
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '600',
-    letterSpacing: 0.2,
   },
-  landingHero: {
-    gap: spacing.group,
+  coveringIntro: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    paddingBottom: 18,
   },
-  landingTitle: {
-    color: '#0f1b2d',
-    fontSize: 39,
-    lineHeight: 52,
-    fontWeight: '900',
-    letterSpacing: -1.65,
+  coveringMascot: {
+    width: 132,
+    height: 132,
+    borderRadius: 36,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  landingTitleAccent: {
-    color: colors.primary,
-  },
-  landingSubtitle: {
-    color: '#68758a',
-    fontSize: 16,
-    lineHeight: 27,
-    fontWeight: '500',
-    letterSpacing: -0.35,
-  },
-  campusScene: {
-    position: 'absolute',
-    left: 120,
-    right: -58,
-    top: 418,
-    height: 296,
-    overflow: 'hidden',
-  },
-  campusSkyOrb: {
-    position: 'absolute',
-    width: 330,
-    height: 330,
-    borderRadius: 165,
-    right: -58,
-    top: -142,
-    backgroundColor: 'rgba(85,150,230,0.15)',
-  },
-  campusMist: {
-    position: 'absolute',
-    left: 4,
-    right: -40,
-    bottom: 10,
-    height: 148,
-    borderRadius: 74,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-  },
-  campusGround: {
-    position: 'absolute',
-    right: -18,
-    bottom: 16,
-    width: 290,
-    height: 78,
-    borderRadius: 42,
-    backgroundColor: 'rgba(121,178,80,0.42)',
+  coveringMascotBoard: {
+    width: 74,
+    height: 62,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
     transform: [{ rotate: '-5deg' }],
   },
-  campusBuilding: {
-    position: 'absolute',
-    right: 12,
-    bottom: 78,
-    width: 182,
-    height: 112,
-    borderRadius: 8,
-    backgroundColor: 'rgba(232,221,203,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    overflow: 'hidden',
-    transform: [{ rotate: '-1deg' }],
+  coveringMascotText: {
+    color: '#FFFFFF',
+    fontSize: 23,
+    lineHeight: 29,
+    fontWeight: '800',
   },
-  campusRoof: {
+  coveringMascotBook: {
+    width: 82,
     height: 18,
-    backgroundColor: 'rgba(199,184,160,0.92)',
+    borderRadius: 9,
+    backgroundColor: '#DDE6F0',
+    marginTop: -8,
   },
-  campusClock: {
-    position: 'absolute',
-    top: 8,
-    right: 28,
-    width: 19,
-    height: 19,
-    borderRadius: 10,
-    backgroundColor: 'rgba(83,149,214,0.76)',
+  coveringIntroCopy: {
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
   },
-  campusClockDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#ffffff',
+  coveringIntroTitle: {
+    color: '#111318',
+    fontSize: 23,
+    lineHeight: 31,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    textAlign: 'center',
   },
-  campusWindowGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  campusWindow: {
-    width: 16,
-    height: 22,
-    borderRadius: 3,
-    backgroundColor: 'rgba(110,166,220,0.48)',
-  },
-  tree: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  treeOne: {
-    right: 178,
-    bottom: 40,
-    transform: [{ scale: 1.12 }],
-  },
-  treeTwo: {
-    right: 112,
-    bottom: 30,
-    transform: [{ scale: 0.95 }],
-  },
-  treeThree: {
-    right: 42,
-    bottom: 36,
-    transform: [{ scale: 1.05 }],
-  },
-  treeCrown: {
-    width: 58,
-    height: 66,
-    borderRadius: 30,
-    backgroundColor: 'rgba(65,139,73,0.72)',
-  },
-  treeTrunk: {
-    width: 8,
-    height: 48,
-    marginTop: -12,
-    borderRadius: 4,
-    backgroundColor: 'rgba(116,87,55,0.56)',
-  },
-  campusFade: {
-    position: 'absolute',
-    left: -36,
-    right: -24,
-    bottom: -4,
-    height: 190,
-    backgroundColor: 'rgba(247,251,255,0.55)',
-  },
-  previewStage: {
-    minHeight: 300,
-    justifyContent: 'center',
-  },
-  previewHalo: {
-    position: 'absolute',
-    width: 230,
-    height: 230,
-    borderRadius: 115,
-    backgroundColor: 'rgba(22,73,154,0.12)',
-    right: -34,
-    top: 16,
-  },
-  previewCardPrimary: {
-    minHeight: 254,
-    borderRadius: 38,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 24 },
-    shadowOpacity: 0.12,
-    shadowRadius: 42,
-  },
-  previewPoster: {
-    height: 154,
-    backgroundColor: '#fff8ef',
-    overflow: 'hidden',
-  },
-  posterShapeLarge: {
-    position: 'absolute',
-    width: 176,
-    height: 176,
-    borderRadius: 88,
-    backgroundColor: '#f3b269',
-    left: 74,
-    top: 22,
-  },
-  posterShapeRed: {
-    position: 'absolute',
-    width: 166,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#d84f41',
-    right: -18,
-    top: 44,
-    transform: [{ rotate: '-16deg' }],
-  },
-  posterGrid: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderColor: 'rgba(15,27,45,0.18)',
-  },
-  posterGridCell: {
-    width: '25%',
-    height: 28,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(15,27,45,0.18)',
-  },
-  previewCopy: {
-    paddingHorizontal: 22,
-    paddingVertical: 18,
-    gap: 4,
-  },
-  previewLabel: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: -0.2,
-  },
-  previewTitle: {
-    color: '#0f1b2d',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.9,
-  },
-  previewMeta: {
-    color: '#7a8495',
-    fontSize: 13,
+  coveringIntroBody: {
+    color: '#7A8594',
+    fontSize: 14,
+    lineHeight: 21,
     fontWeight: '500',
-  },
-  previewCardFloat: {
-    position: 'absolute',
-    right: 18,
-    bottom: 6,
-    width: 92,
-    height: 92,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,27,45,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    shadowColor: '#0f1b2d',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-  },
-  previewFloatScore: {
-    color: '#ffffff',
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  previewFloatLabel: {
-    color: 'rgba(255,255,255,0.56)',
-    fontSize: 11,
-    fontWeight: '600',
+    textAlign: 'center',
   },
   landingActions: {
-    gap: 14,
-    paddingTop: spacing.group,
+    gap: 10,
   },
-  landingMetricCard: {
-    minHeight: 96,
-    borderRadius: 32,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+  coveringNoticeCard: {
+    minHeight: 58,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
-    backgroundColor: 'rgba(255,255,255,0.74)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
+    gap: 10,
+    backgroundColor: colors.primarySoft,
   },
-  metricIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  landingMetricCard: {
+    minHeight: 58,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+  },
+  coveringNoticeIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(22,73,154,0.10)',
   },
-  bookLeft: {
-    position: 'absolute',
-    width: 16,
-    height: 24,
-    borderRadius: 3,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    left: 17,
-    top: 16,
-    transform: [{ rotate: '-8deg' }],
-  },
-  bookRight: {
-    position: 'absolute',
-    width: 16,
-    height: 24,
-    borderRadius: 3,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    right: 17,
-    top: 16,
-    transform: [{ rotate: '8deg' }],
-  },
-  bookSpine: {
-    width: 2,
-    height: 26,
-    backgroundColor: colors.primary,
-    borderRadius: 1,
+  coveringNoticeIconText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
   },
   metricCopy: {
     flex: 1,
     gap: 2,
   },
   metricCaption: {
-    color: '#7a8495',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
     letterSpacing: -0.25,
   },
   metricValueText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '900',
+    color: '#5C6A7D',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
     letterSpacing: -0.5,
-    lineHeight: 22,
   },
   landingPrimaryButton: {
-    minHeight: 58,
-    borderRadius: 18,
+    minHeight: 52,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.22,
-    shadowRadius: 26,
   },
   landingPrimaryButtonText: {
     color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '900',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
     letterSpacing: -0.35,
   },
   landingSecondaryButton: {
-    minHeight: 58,
-    borderRadius: 18,
+    minHeight: 52,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.64)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,27,45,0.18)',
+    borderColor: '#E6EBF1',
   },
   landingSecondaryButtonText: {
-    color: '#0f1b2d',
-    fontSize: 17,
-    fontWeight: '900',
+    color: '#111318',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
     letterSpacing: -0.35,
   },
   skipButton: {
@@ -1416,7 +1092,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     color: '#7b8798',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '500',
     letterSpacing: -0.35,
   },
@@ -1432,7 +1108,7 @@ const styles = StyleSheet.create({
   // Step screen shell
   safe: {
     flex: 1,
-    backgroundColor: '#f7faff',
+    backgroundColor: '#FFFFFF',
   },
   flex: {
     flex: 1,
@@ -1442,14 +1118,15 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: spacing.page,
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
     height: 52,
+    borderBottomWidth: 0,
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1462,18 +1139,40 @@ const styles = StyleSheet.create({
     borderColor: '#0f1b2d',
     transform: [{ rotate: '45deg' }, { translateX: 2 }],
   },
+  stepTopTitle: {
+    position: 'absolute',
+    left: 80,
+    right: 80,
+    color: '#111318',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  stepHelpButton: {
+    minWidth: 60,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepHelpText: {
+    color: '#6E7A88',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
   stepCount: {
     color: colors.primary,
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
 
   // Progress
   progressWrap: {
     paddingHorizontal: spacing.page,
-    gap: 9,
-    marginBottom: spacing.section * 1.2,
+    gap: 7,
+    marginBottom: 18,
   },
   progressSegmentRow: {
     flexDirection: 'row',
@@ -1481,10 +1180,10 @@ const styles = StyleSheet.create({
   },
   progressSegment: {
     flex: 1,
-    height: 4,
+    height: 3,
     borderRadius: 99,
     overflow: 'hidden',
-    backgroundColor: 'rgba(15,27,45,0.08)',
+    backgroundColor: '#EAEDF2',
   },
   progressSegmentFill: {
     flex: 1,
@@ -1494,28 +1193,29 @@ const styles = StyleSheet.create({
   // Scroll
   scrollContent: {
     paddingHorizontal: spacing.page,
-    paddingTop: 0,
+    paddingTop: 4,
     paddingBottom: spacing.section,
-    gap: spacing.section,
+    gap: 18,
   },
 
   // Title
   titleArea: {
-    gap: spacing.tight,
+    gap: 8,
+    paddingTop: 2,
   },
   screenTitle: {
-    color: '#0f1b2d',
-    fontSize: 28,
-    lineHeight: 37,
-    fontWeight: '900',
-    letterSpacing: -1,
+    color: '#111318',
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   screenSubtitle: {
-    color: '#6f7b90',
-    fontSize: 14,
-    lineHeight: 23,
+    color: '#8A96A8',
+    fontSize: 13,
+    lineHeight: 20,
     fontWeight: '500',
-    marginTop: 2,
+    marginTop: 4,
   },
   subtitleEmail: {
     color: colors.primary,
@@ -1526,7 +1226,7 @@ const styles = StyleSheet.create({
 
   // Input area
   inputArea: {
-    gap: spacing.group,
+    gap: 13,
   },
 
   // Inline action link
@@ -1535,8 +1235,9 @@ const styles = StyleSheet.create({
   },
   actionLinkText: {
     color: colors.primary,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   disabled: {
     opacity: 0.4,
@@ -1547,10 +1248,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: '#eef4ff',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
   },
   infoDot: {
     width: 8,
@@ -1570,7 +1271,7 @@ const styles = StyleSheet.create({
   // Phone row input
   rowInput: {
     flexDirection: 'row',
-    gap: spacing.related,
+    gap: 8,
     alignItems: 'flex-end',
   },
   rowInputFlex: {
@@ -1578,9 +1279,9 @@ const styles = StyleSheet.create({
   },
   sideBtn: {
     backgroundColor: colors.primary,
-    borderRadius: 13,
-    paddingHorizontal: 14,
-    paddingVertical: 15,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 76,
@@ -1594,9 +1295,9 @@ const styles = StyleSheet.create({
   // Verified
   successBadge: {
     backgroundColor: '#ebfff3',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
   },
   successBadgeText: {
     color: '#1a8a4a',
@@ -1606,20 +1307,19 @@ const styles = StyleSheet.create({
 
   // Department list
   deptSearchInput: {
-    borderRadius: 13,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255,255,255,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(128,143,166,0.20)',
+    borderRadius: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    backgroundColor: '#F4F7FA',
+    borderWidth: 0,
     color: '#0f1b2d',
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
     letterSpacing: -0.3,
     marginBottom: 10,
   },
   deptList: {
-    gap: 10,
+    gap: 8,
     maxHeight: 280,
   },
   deptRow: {
@@ -1627,15 +1327,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(128,143,166,0.20)',
+    borderColor: '#E5E8EF',
   },
   deptRowActive: {
-    backgroundColor: '#eef4ff',
-    borderColor: 'rgba(22,73,154,0.30)',
+    backgroundColor: '#E0F0FF',
+    borderColor: '#23A9FF',
   },
   deptRowText: {
     color: '#0f1b2d',
@@ -1724,7 +1424,7 @@ const styles = StyleSheet.create({
   completeTitle: {
     color: '#0f1b2d',
     fontSize: 22,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.8,
     textAlign: 'center',
   },
@@ -1741,13 +1441,14 @@ const styles = StyleSheet.create({
   // Bottom bar
   bottomBar: {
     paddingHorizontal: spacing.page,
-    paddingTop: spacing.related,
-    gap: spacing.tight,
-    backgroundColor: 'rgba(247,250,255,0.96)',
+    paddingTop: 12,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 0,
   },
   stepButton: {
-    minHeight: 56,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: 8,
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },

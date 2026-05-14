@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -28,11 +29,54 @@ interface Props {
   route: Extract<AppRoute, { name: 'Settings' }>;
 }
 
-type ActiveModal = 'nickname' | 'department' | 'password' | 'deleteAccount' | null;
+type ActiveModal = 'nickname' | 'department' | 'password' | null;
+
+type LegalSection = {
+  heading: string;
+  body: string;
+};
+
+const SERVICE_TERMS_SECTIONS: LegalSection[] = [
+  {
+    heading: '서비스 목적',
+    body: '인하평은 인하대학교 학생들이 강의 정보, 시간표 구성, 강의평 요약을 확인하고 직접 강의평을 작성할 수 있도록 돕는 서비스입니다.',
+  },
+  {
+    heading: '회원의 의무',
+    body: '회원은 타인의 권리를 침해하거나 허위 정보, 욕설, 광고성 게시물, 개인정보가 포함된 내용을 등록해서는 안 됩니다. 운영상 필요한 경우 부적절한 게시물은 숨김 또는 삭제될 수 있습니다.',
+  },
+  {
+    heading: '강의평 이용',
+    body: '강의평은 익명 기반 참고 정보이며 실제 수업 운영, 평가 방식, 담당 교수, 분반 정보는 학기별로 달라질 수 있습니다. 최종 수강 판단은 학교 공식 공지와 수강신청 정보를 함께 확인해야 합니다.',
+  },
+  {
+    heading: '서비스 변경과 중단',
+    body: '운영상 필요한 경우 기능, 화면, 제공 정보가 변경될 수 있으며 점검이나 장애가 발생하면 서비스 이용이 일시적으로 제한될 수 있습니다.',
+  },
+];
+
+const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
+  {
+    heading: '수집하는 개인정보',
+    body: '회원가입과 본인 확인을 위해 이메일, 닉네임, 학과, 휴대폰 번호를 처리합니다. 서비스 이용 과정에서 강의평, 문의 내역, 포인트 내역, 접속 기록이 생성될 수 있습니다.',
+  },
+  {
+    heading: '이용 목적',
+    body: '개인정보는 회원 식별, 학교 구성원 인증, 맞춤 강의 추천, 문의 응대, 서비스 안정성 확보, 부정 이용 방지, 포인트 적립 내역 관리에 사용됩니다.',
+  },
+  {
+    heading: '보관과 파기',
+    body: '회원 정보는 서비스 이용 기간 동안 보관하며 탈퇴 또는 처리 목적 달성 후 지체 없이 파기합니다. 관계 법령에 따라 보관이 필요한 기록은 정해진 기간 동안 분리 보관할 수 있습니다.',
+  },
+  {
+    heading: '이용자의 권리',
+    body: '회원은 자신의 개인정보 열람, 정정, 삭제, 처리 정지를 요청할 수 있습니다. 앱 내 설정 또는 1:1 문의를 통해 요청하면 본인 확인 후 필요한 조치를 진행합니다.',
+  },
+];
 
 export function SettingsScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { user, updateProfile, deleteAccount } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [notifyReview, setNotifyReview] = useState(true);
   const [notifyPoint, setNotifyPoint] = useState(true);
   const [notifyNotice, setNotifyNotice] = useState(false);
@@ -61,10 +105,6 @@ export function SettingsScreen({ navigation, route }: Props) {
   const [confirmPw, setConfirmPw] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // delete account modal
-  const [deletePw, setDeletePw] = useState('');
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
   const closeModal = () => {
     setActiveModal(null);
     setNicknameInput('');
@@ -73,7 +113,6 @@ export function SettingsScreen({ navigation, route }: Props) {
     setCurrentPw('');
     setNewPw('');
     setConfirmPw('');
-    setDeletePw('');
   };
 
   const openModal = (modal: ActiveModal) => {
@@ -131,31 +170,17 @@ export function SettingsScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    if (!deletePw || deleteLoading) return;
-    setDeleteLoading(true);
-    try {
-      await deleteAccount(deletePw);
-      closeModal();
-      navigation.replace({ name: 'Login' });
-    } catch {
-      Alert.alert('오류', '탈퇴에 실패했어요. 비밀번호를 확인해주세요.');
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
   const SECTIONS = [
-    { key: 'account' as const, label: '계정 정보' },
-    { key: 'privacy' as const, label: '개인정보' },
+    { key: 'account' as const, label: '내 정보' },
     { key: 'app' as const, label: '앱 설정' },
+    { key: 'privacy' as const, label: '개인정보' },
   ];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <PressableScale style={styles.backButton} onPress={() => navigation.goBack()}>
-          <View style={styles.backArrow} />
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </PressableScale>
         <Text style={styles.headerTitle}>설정</Text>
       </View>
@@ -207,30 +232,11 @@ export function SettingsScreen({ navigation, route }: Props) {
               rows={[
                 { label: '이메일 인증', value: '완료' },
                 { label: '인하대 이메일', value: user?.email ?? '—' },
+                { label: '전화번호', value: user?.phoneNumber ?? '미등록' },
               ]}
             />
-            <ActionCard
-              title="보안"
-              items={[
-                {
-                  label: '로그인 기록 보기',
-                  onPress: () => Alert.alert('준비 중', '로그인 기록 기능은 준비 중입니다.'),
-                },
-                {
-                  label: '개인정보 처리방침',
-                  onPress: () => Alert.alert('준비 중', '개인정보 처리방침 페이지는 준비 중입니다.'),
-                },
-              ]}
-            />
-            <View style={styles.dangerCard}>
-              <Text style={styles.dangerTitle}>계정 탈퇴</Text>
-              <Text style={styles.dangerDesc}>
-                탈퇴 시 모든 리뷰와 활동 내역이 삭제되며 복구가 불가능해요.
-              </Text>
-              <PressableScale style={styles.dangerButton} onPress={() => openModal('deleteAccount')}>
-                <Text style={styles.dangerButtonText}>탈퇴하기</Text>
-              </PressableScale>
-            </View>
+            <LegalTextCard title="서비스 이용약관" sections={SERVICE_TERMS_SECTIONS} />
+            <LegalTextCard title="개인정보 처리방침" sections={PRIVACY_POLICY_SECTIONS} />
           </>
         )}
 
@@ -386,33 +392,6 @@ export function SettingsScreen({ navigation, route }: Props) {
           <Text style={styles.modalButtonText}>{passwordLoading ? '변경 중...' : '비밀번호 변경'}</Text>
         </PressableScale>
       </BottomModal>
-
-      {/* 계정 탈퇴 모달 */}
-      <BottomModal visible={activeModal === 'deleteAccount'} onClose={closeModal} title="계정 탈퇴">
-        <View style={styles.deleteWarning}>
-          <Text style={styles.deleteWarningText}>
-            탈퇴하면 모든 리뷰와 활동 내역이 영구 삭제돼요.{'\n'}계속하려면 비밀번호를 입력해주세요.
-          </Text>
-        </View>
-        <Text style={styles.modalLabel}>비밀번호 확인</Text>
-        <TextInput
-          style={styles.modalInput}
-          placeholder="비밀번호를 입력하세요"
-          placeholderTextColor="#9aa5b8"
-          value={deletePw}
-          onChangeText={setDeletePw}
-          secureTextEntry
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={handleDeleteAccount}
-        />
-        <PressableScale
-          style={[styles.modalButtonDanger, !deletePw ? styles.modalButtonDisabled : null]}
-          onPress={handleDeleteAccount}
-        >
-          <Text style={styles.modalButtonDangerText}>{deleteLoading ? '탈퇴 중...' : '탈퇴하기'}</Text>
-        </PressableScale>
-      </BottomModal>
     </SafeAreaView>
   );
 }
@@ -471,8 +450,22 @@ function ActionCard({ title, items }: { title: string; items: { label: string; o
           {index > 0 ? <View style={styles.rowDivider} /> : null}
           <PressableScale style={styles.actionRow} onPress={item.onPress}>
             <Text style={styles.actionLabel}>{item.label}</Text>
-            <View style={styles.actionChevron} />
+            <Ionicons name="chevron-forward" size={16} color="#a0aabb" />
           </PressableScale>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function LegalTextCard({ title, sections }: { title: string; sections: LegalSection[] }) {
+  return (
+    <View style={styles.legalCard}>
+      <Text style={styles.legalTitle}>{title}</Text>
+      {sections.map((section, index) => (
+        <View key={section.heading} style={index > 0 ? styles.legalSectionSpaced : null}>
+          <Text style={styles.legalHeading}>{section.heading}</Text>
+          <Text style={styles.legalBody}>{section.body}</Text>
         </View>
       ))}
     </View>
@@ -515,61 +508,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.page,
-    paddingBottom: 16,
-    gap: 14,
+    paddingBottom: 12,
+    gap: 10,
+    backgroundColor: colors.surface,
   },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-  },
-  backArrow: {
-    width: 9,
-    height: 9,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: '#111827',
-    transform: [{ rotate: '45deg' }, { translateX: 2 }],
+    borderColor: colors.cardBorder,
   },
   headerTitle: {
     flex: 1,
-    color: '#111827',
-    fontSize: 20,
-    lineHeight: 25,
-    fontWeight: '900',
-    letterSpacing: -0.7,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    letterSpacing: -0.35,
   },
   tabRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing.page,
     gap: 8,
-    paddingBottom: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   tab: {
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: '#EEF1F4',
   },
   tabActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   tabText: {
-    color: '#65738a',
-    fontSize: 14,
-    fontWeight: '900',
+    color: '#5E6E85',
+    fontSize: 12,
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   tabTextActive: {
@@ -577,52 +560,47 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.page,
-    gap: 14,
-    paddingTop: 4,
+    gap: 10,
+    paddingTop: 8,
   },
   card: {
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 6,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    borderColor: colors.cardBorder,
+    paddingHorizontal: 14,
+    paddingTop: 13,
+    paddingBottom: 2,
   },
   cardTitle: {
-    color: '#65738a',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginBottom: 14,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.1,
+    marginBottom: 8,
   },
   rowDivider: {
     height: 1,
-    backgroundColor: '#f0f3f8',
+    backgroundColor: colors.cardBorder,
     marginVertical: 2,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 11,
     gap: 12,
   },
   infoLabel: {
-    color: '#65738a',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
     letterSpacing: -0.3,
   },
   infoValue: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '900',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.3,
     flexShrink: 1,
     textAlign: 'right',
@@ -631,21 +609,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingVertical: 13,
   },
   actionLabel: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
     letterSpacing: -0.35,
   },
-  actionChevron: {
-    width: 8,
-    height: 8,
-    borderRightWidth: 2,
-    borderTopWidth: 2,
-    borderColor: '#8f9caf',
-    transform: [{ rotate: '45deg' }],
+  legalCard: {
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
+    gap: 0,
+  },
+  legalTitle: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '800',
+    letterSpacing: -0.35,
+    marginBottom: 10,
+  },
+  legalSectionSpaced: {
+    marginTop: 11,
+  },
+  legalHeading: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  legalBody: {
+    color: '#5E6E85',
+    fontSize: 12,
+    lineHeight: 19,
+    fontWeight: '500',
+    letterSpacing: -0.2,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -658,47 +664,43 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   toggleLabel: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
     letterSpacing: -0.35,
   },
   toggleDesc: {
-    color: '#8fa3bc',
+    color: colors.textTertiary,
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: '700',
+    fontWeight: '500',
     letterSpacing: -0.25,
   },
   dangerCard: {
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: 'rgba(255, 59, 48, 0.16)',
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     gap: 10,
-    shadowColor: '#ff3b30',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
   },
   dangerTitle: {
     color: colors.danger,
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   dangerDesc: {
-    color: '#65738a',
+    color: '#5E6E85',
     fontSize: 13,
     lineHeight: 20,
-    fontWeight: '700',
+    fontWeight: '500',
     letterSpacing: -0.25,
   },
   dangerButton: {
     marginTop: 4,
-    borderRadius: 12,
+    borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: colors.dangerSoft,
@@ -707,8 +709,8 @@ const styles = StyleSheet.create({
   },
   dangerButtonText: {
     color: colors.danger,
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   // modal
@@ -722,8 +724,8 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingHorizontal: spacing.page,
     paddingTop: 14,
     paddingBottom: 36,
@@ -738,41 +740,37 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalTitle: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '900',
+    color: '#111318',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: -0.5,
     marginBottom: 20,
   },
   modalLabel: {
-    color: '#65738a',
+    color: '#5E6E85',
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: -0.2,
     marginBottom: 8,
   },
   modalInput: {
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
+    borderColor: '#EEF1F4',
+    color: '#111318',
+    fontSize: 13,
+    fontWeight: '500',
     letterSpacing: -0.3,
   },
   modalButton: {
     marginTop: 20,
-    borderRadius: 999,
-    paddingVertical: 16,
+    borderRadius: 8,
+    paddingVertical: 14,
     alignItems: 'center',
     backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
   },
   modalButtonDisabled: {
     backgroundColor: '#c8d3e2',
@@ -780,14 +778,14 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.4,
   },
   modalButtonDanger: {
     marginTop: 20,
-    borderRadius: 999,
-    paddingVertical: 16,
+    borderRadius: 8,
+    paddingVertical: 14,
     alignItems: 'center',
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
@@ -795,14 +793,14 @@ const styles = StyleSheet.create({
   },
   modalButtonDangerText: {
     color: colors.danger,
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.4,
   },
   deleteWarning: {
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
     borderColor: 'rgba(255, 59, 48, 0.14)',
@@ -818,23 +816,23 @@ const styles = StyleSheet.create({
   // department picker
   deptSheet: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingHorizontal: spacing.page,
     paddingTop: 14,
     paddingBottom: 32,
     maxHeight: '80%',
   },
   deptSearchInput: {
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
+    borderColor: '#EEF1F4',
+    color: '#111318',
+    fontSize: 13,
+    fontWeight: '500',
     letterSpacing: -0.3,
     marginBottom: 12,
   },
@@ -847,25 +845,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: 'rgba(128,143,166,0.18)',
     marginBottom: 8,
   },
   deptRowActive: {
-    backgroundColor: '#eef4ff',
+    backgroundColor: '#EBF3FF',
     borderColor: 'rgba(22,73,154,0.3)',
   },
   deptRowText: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#111318',
+    fontSize: 13,
+    fontWeight: '600',
     letterSpacing: -0.3,
   },
   deptRowTextActive: {
     color: colors.primary,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   deptCheckOff: {
     width: 22,

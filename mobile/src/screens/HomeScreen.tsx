@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CoursePosterCard } from '../components/CoursePosterCard';
 import { PressableScale, StatePanel } from '../components/ui';
@@ -21,46 +22,88 @@ interface Props {
 
 type CurationKey = 'growth' | 'famous' | 'honey' | 'verified';
 
-type HomeListItem =
-  | { type: 'header'; id: 'header' }
-  | { type: 'course'; id: string; course: Course; index: number };
-
 const curationCards: {
   id: CurationKey;
   title: string;
   caption: string;
-  tone: string;
   accent: string;
-  reason: string;
+  background: string;
 }[] = [
-  { id: 'growth',   title: '이번 학기\n평점이 오른 강의', caption: '업 트렌드',    tone: '#dff6e9', accent: '#35a86b', reason: '평점 상승 중' },
-  { id: 'famous',   title: '학생들이 많이\n담은 강의',     caption: '인기 강의',    tone: '#eee9ff', accent: '#8f6bea', reason: '학생들의 선택' },
-  { id: 'honey',    title: '교양 꿀강의\n모음',            caption: '교양 추천',    tone: '#fff2d8', accent: '#f2a93b', reason: '교양 꿀강의' },
-  { id: 'verified', title: '리뷰 많은\n검증된 강의',       caption: '검증된 강의',  tone: '#ffe8ec', accent: '#e85b73', reason: '검증된 강의' },
+  { id: 'growth', title: '평점 상승', caption: '최근 반응 좋은 강의', accent: '#23A9FF', background: '#EAF7FF' },
+  { id: 'famous', title: '인기 강의', caption: '학생들이 많이 본 강의', accent: '#23A9FF', background: '#F4F8FC' },
+  { id: 'honey', title: '교양 추천', caption: '가볍게 둘러볼 교양', accent: '#226D68', background: '#EAF6F0' },
+  { id: 'verified', title: '후기 많은', caption: '정보가 충분한 강의', accent: '#23A9FF', background: '#F4F8FC' },
 ];
 
 const CURATION_FETCH: Record<CurationKey, () => Promise<Course[]>> = {
-  growth:   getGrowthCourses,
-  famous:   getFamousCourses,
-  honey:    getHoneyGeCourses,
+  growth: getGrowthCourses,
+  famous: getFamousCourses,
+  honey: getHoneyGeCourses,
   verified: getVerifiedCourses,
 };
+
+const HOME_GROWTH_ILLUSTRATIONS = [
+  require('../../assets/home-growth-seed.png'),
+  require('../../assets/home-growth-sprout.png'),
+  require('../../assets/home-growth-leaf.png'),
+  require('../../assets/home-growth-tree.png'),
+  require('../../assets/home-growth-forest.png'),
+] as const;
+const HOME_BUTTERFLY_SPRITES = {
+  blue: require('../../assets/home-butterfly-blue.png'),
+  red: require('../../assets/home-butterfly-red.png'),
+  yellow: require('../../assets/home-butterfly-yellow.png'),
+  orange: require('../../assets/home-butterfly-orange.png'),
+} as const;
+
+const HOME_GRADE_LEVELS = [
+  { name: '씨앗', minPoints: 0 },
+  { name: '새싹', minPoints: 100 },
+  { name: '잎새', minPoints: 300 },
+  { name: '나무', minPoints: 700 },
+  { name: '숲', minPoints: 1200 },
+] as const;
+
+const HOME_GROWTH_SUFFIX: Record<(typeof HOME_GRADE_LEVELS)[number]['name'], string> = {
+  씨앗: '을 키워요',
+  새싹: '을 키워요',
+  잎새: '를 키워요',
+  나무: '를 키워요',
+  숲: '을 가꿔요',
+};
+
+function getHomeGradeInfo(points: number) {
+  const safePoints = Math.max(0, points);
+  const currentIndex = HOME_GRADE_LEVELS.reduce((current, grade, index) => (
+    safePoints >= grade.minPoints ? index : current
+  ), 0);
+  const current = HOME_GRADE_LEVELS[currentIndex];
+  const next = HOME_GRADE_LEVELS[currentIndex + 1] ?? null;
+  const progress = next
+    ? Math.min(1, (safePoints - current.minPoints) / (next.minPoints - current.minPoints))
+    : 1;
+
+  return {
+    currentIndex,
+    current,
+    next,
+    progress,
+    remainingPoints: next ? Math.max(0, next.minPoints - safePoints) : 0,
+  };
+}
 
 export function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, user } = useAuth();
-  const flatListRef = useRef<FlatList>(null);
-
   const [famousCourses, setFamousCourses] = useState<Course[]>([]);
   const [honeyCourses, setHoneyCourses] = useState<Course[]>([]);
   const [verifiedCourses, setVerifiedCourses] = useState<Course[]>([]);
   const [growthCourses, setGrowthCourses] = useState<Course[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
-
   const [selectedCuration, setSelectedCuration] = useState<CurationKey | null>(null);
   const [curationCourses, setCurationCourses] = useState<Course[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [curationLoading, setCurationLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     let isActive = true;
@@ -93,7 +136,9 @@ export function HomeScreen({ navigation }: Props) {
 
     loadHighlights();
 
-    return () => { isActive = false; };
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -107,13 +152,19 @@ export function HomeScreen({ navigation }: Props) {
     setCurationCourses([]);
 
     CURATION_FETCH[selectedCuration]()
-      .then((courses) => { if (isActive) setCurationCourses(courses); })
-      .catch(() => { if (isActive) setCurationCourses([]); })
-      .finally(() => { if (isActive) setCurationLoading(false); });
+      .then((courses) => {
+        if (isActive) setCurationCourses(courses.slice(0, 5));
+      })
+      .catch(() => {
+        if (isActive) setCurationCourses([]);
+      })
+      .finally(() => {
+        if (isActive) setCurationLoading(false);
+      });
 
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-
-    return () => { isActive = false; };
+    return () => {
+      isActive = false;
+    };
   }, [selectedCuration]);
 
   const mergedCourses = useMemo(() => {
@@ -125,213 +176,389 @@ export function HomeScreen({ navigation }: Props) {
         return true;
       })
       .sort((a, b) => getCourseWeight(b) - getCourseWeight(a))
-      .slice(0, 12);
+      .slice(0, 10);
   }, [famousCourses, growthCourses, honeyCourses, verifiedCourses]);
 
-  const heroCourse = useMemo(() => {
-    if (mergedCourses.length === 0) return undefined;
-    const heroPool = mergedCourses.filter((c) => !isOtherMajor(c, user?.department));
-    const candidates = (heroPool.length > 0 ? heroPool : mergedCourses).slice(0, 5);
-    return candidates[getTodaySeed() % candidates.length];
-  }, [mergedCourses, user?.department]);
-
-  const heroReason = getAutoReason(heroCourse, growthCourses, honeyCourses, verifiedCourses);
-
-  const userName = isAuthenticated && user ? user.nickname : '게스트';
-
-  const listCourses = selectedCuration
-    ? curationCourses
-    : mergedCourses.filter((c) => c.id !== heroCourse?.id).slice(0, 7);
-
-  const items = useMemo<HomeListItem[]>(
-    () => [
-      { type: 'header', id: 'header' },
-      ...listCourses.map((course, index) => ({
-        type: 'course' as const,
-        id: `course-${course.id}`,
-        course,
-        index,
-      })),
-    ],
-    [listCourses],
+  const recommendedCourses = useMemo(
+    () => buildHomeRecommendations(mergedCourses, user?.department),
+    [mergedCourses, user?.department],
   );
 
+  const curatedVisibleCourses = useMemo(
+    () => buildHomeRecommendations(curationCourses, user?.department).slice(0, 5),
+    [curationCourses, user?.department],
+  );
+
+  const heroCourse = useMemo(() => {
+    if (recommendedCourses.length === 0) return undefined;
+    const pool = recommendedCourses.filter((course) => !isOtherMajor(course, user?.department));
+    const candidates = (pool.length > 0 ? pool : recommendedCourses).slice(0, 5);
+    return candidates[getTodaySeed() % candidates.length];
+  }, [recommendedCourses, user?.department]);
+
+  const userName = isAuthenticated && user ? user.nickname : '게스트';
+  const visibleCourses = selectedCuration
+    ? curatedVisibleCourses
+    : recommendedCourses.filter((c) => c.id !== heroCourse?.id).slice(0, 4);
+  const gradeInfo = useMemo(() => getHomeGradeInfo(user?.points ?? 0), [user?.points]);
+  const pointProgress = Math.round(gradeInfo.progress * 100);
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-      <FlatList
-        ref={flatListRef}
-        data={isLoading || errorMessage ? [{ type: 'header' as const, id: 'header' as const }] : items}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.group }]}
-        renderItem={({ item }) => {
-          if (item.type === 'header') {
-            return (
-              <HomeHeader
-                userName={userName}
-                heroCourse={heroCourse}
-                heroReason={heroReason}
-                isLoading={isLoading}
-                errorMessage={errorMessage}
-                selectedCuration={selectedCuration}
-                curationLoading={curationLoading}
-                navigation={navigation}
-                onSelectCuration={(id) =>
-                  setSelectedCuration((prev) => (prev === id ? null : id))
-                }
-              />
-            );
-          }
-
-          return (
-            <View style={styles.courseRow}>
-              <CoursePosterCard
-                course={item.course}
-                variant="medium"
-                index={item.index}
-                userDepartment={user?.department}
-                onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: item.course.id })}
-              />
-            </View>
-          );
-        }}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 12) + 96 }]}
+        showsVerticalScrollIndicator={false}
         onScroll={(event) => navigation.onTabScroll(event.nativeEvent.contentOffset.y)}
         scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        windowSize={7}
-      />
+      >
+        <View style={styles.topUtilityRow}>
+          <PressableScale style={styles.utilityButton} onPress={() => navigation.switchTab('Search')}>
+            <Ionicons name="search-outline" size={21} color="#5E6A78" />
+          </PressableScale>
+          <PressableScale style={styles.utilityButton} onPress={() => navigation.navigate({ name: 'Notifications' })}>
+            <Ionicons name="notifications-outline" size={21} color="#5E6A78" />
+          </PressableScale>
+        </View>
+
+        <View style={styles.heroCard}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroGreeting}>{userName}님, 오늘은</Text>
+            <Text style={styles.heroTitle}>
+              강의평으로 <Text style={styles.heroAccent}>{gradeInfo.current.name}</Text>{HOME_GROWTH_SUFFIX[gradeInfo.current.name]}
+            </Text>
+          </View>
+
+          <GrowthScene activeIndex={gradeInfo.currentIndex} />
+
+          <View style={styles.pointBox}>
+            <View style={styles.pointHeader}>
+              <Text style={styles.pointText}>내 포인트 {user?.points ?? 0}P</Text>
+              <Text style={styles.pointHint}>
+                {gradeInfo.next
+                  ? `${gradeInfo.next.name}까지 ${gradeInfo.remainingPoints}P`
+                  : '가장 높은 등급이에요'}
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${pointProgress}%` }]} />
+            </View>
+          </View>
+
+          <PressableScale
+            style={styles.primaryButton}
+            onPress={() => navigation.switchTab('Search')}
+          >
+            <Text style={styles.primaryButtonText}>강의평 작성하기</Text>
+          </PressableScale>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>빠른 추천</Text>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.benefitRail}>
+          {curationCards.map((card) => {
+            const isActive = selectedCuration === card.id;
+            return (
+              <PressableScale
+                key={card.id}
+                style={[styles.benefitCard, { backgroundColor: card.background }, isActive ? styles.benefitCardActive : null]}
+                onPress={() => setSelectedCuration((prev) => (prev === card.id ? null : card.id))}
+              >
+                <Text style={styles.benefitTitle}>{card.title}</Text>
+                <Text style={[styles.benefitCaption, { color: card.accent }]}>{card.caption}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+
+        {isLoading ? <StatePanel label="추천 강의를 고르는 중입니다." loading /> : null}
+        {!isLoading && errorMessage ? <StatePanel label={errorMessage} error /> : null}
+
+        {!isLoading && !errorMessage ? (
+          <View style={styles.courseSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                {selectedCuration
+                  ? curationCards.find((card) => card.id === selectedCuration)?.caption ?? '추천 강의'
+                  : '추천 강의'}
+              </Text>
+              {curationLoading ? <Text style={styles.loadingText}>불러오는 중...</Text> : null}
+            </View>
+
+            {visibleCourses.map((course, index) => (
+              <View key={course.id} style={styles.courseRow}>
+                <CoursePosterCard
+                  course={course}
+                  variant="medium"
+                  index={index}
+                  userDepartment={user?.department}
+                  onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: course.id })}
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-function HomeHeader({
-  userName,
-  heroCourse,
-  heroReason,
-  isLoading,
-  errorMessage,
-  selectedCuration,
-  curationLoading,
-  navigation,
-  onSelectCuration,
-}: {
-  userName: string;
-  heroCourse?: Course;
-  heroReason: string;
-  isLoading: boolean;
-  errorMessage: string;
-  selectedCuration: CurationKey | null;
-  curationLoading: boolean;
-  navigation: AppNavigation;
-  onSelectCuration: (id: CurationKey) => void;
-}) {
+function GrowthScene({ activeIndex }: { activeIndex: number }) {
+  const breezeAnim = useRef(new Animated.Value(0)).current;
+  const butterflyAnims = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+
+  useEffect(() => {
+    const breezeLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breezeAnim, {
+          toValue: 1,
+          duration: 4200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breezeAnim, {
+          toValue: 0,
+          duration: 4200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const butterflyLoops = butterflyAnims.map((anim, index) => Animated.loop(
+      Animated.sequence([
+        Animated.delay(index * 1100),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 4800 + index * 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(1200 + index * 450),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    ));
+
+    breezeLoop.start();
+    butterflyLoops.forEach((loop) => loop.start());
+    return () => {
+      breezeLoop.stop();
+      butterflyLoops.forEach((loop) => loop.stop());
+    };
+  }, [breezeAnim, butterflyAnims]);
+
   return (
-    <View style={styles.headerWrap}>
-      <View style={styles.topGreeting}>
-        <View>
-          <Text style={styles.greetingTitle}>안녕하세요, {userName}님</Text>
-          <Text style={styles.greetingSubtitle}>오늘도 좋은 강의로 채워보세요.</Text>
-        </View>
-        <PressableScale style={styles.noticeButton} onPress={() => navigation.navigate({ name: 'Notifications' })}>
-          <BellIcon />
-        </PressableScale>
+    <View style={styles.growthScene}>
+      <View style={styles.growthSlide}>
+        <Image source={HOME_GROWTH_ILLUSTRATIONS[activeIndex]} style={styles.growthArtwork} resizeMode="cover" />
+        <GrowthMotionOverlay
+          index={activeIndex}
+          breezeAnim={breezeAnim}
+          butterflyAnims={butterflyAnims}
+        />
       </View>
-
-      {isLoading ? <StatePanel label="추천 강의를 고르는 중입니다." loading /> : null}
-      {!isLoading && errorMessage ? <StatePanel label={errorMessage} error /> : null}
-
-      {!isLoading && !errorMessage && heroCourse ? (
-        <PressableScale
-          style={styles.heroCard}
-          onPress={() => navigation.navigate({ name: 'CourseCollection', courseId: heroCourse.id })}
-        >
-          <View style={styles.heroCopy}>
-            <View style={styles.heroReasonRow}>
-              <Text style={styles.sectionAccent}>오늘의 추천</Text>
-              <View style={styles.reasonBadge}>
-                <Text style={styles.reasonBadgeText}>{heroReason}</Text>
-              </View>
-            </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>{heroCourse.name}</Text>
-            <Text style={styles.heroMeta} numberOfLines={1}>
-              {heroCourse.professor} 교수 · {heroCourse.department}
-            </Text>
-            <View style={styles.heroTags}>
-              {heroCourse.type ? <Text style={styles.heroTag}>{heroCourse.type}</Text> : null}
-              <Text style={styles.heroTag}>후기 {heroCourse.reviewCount}개</Text>
-              <Text style={styles.heroTag}>★ {heroCourse.rating.toFixed(1)}</Text>
-            </View>
-          </View>
-          <View style={styles.heroVisual}>
-            <View style={styles.codeTile}>
-              <Text style={styles.codeTileText}>★</Text>
-            </View>
-            <View style={styles.visualBase} />
-          </View>
-        </PressableScale>
-      ) : null}
-
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>추천 큐레이션</Text>
-        {selectedCuration ? (
-          <PressableScale onPress={() => onSelectCuration(selectedCuration)}>
-            <Text style={styles.resetText}>전체 보기</Text>
-          </PressableScale>
-        ) : null}
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.curationRail}
-      >
-        {curationCards.map((card) => {
-          const isActive = selectedCuration === card.id;
-          return (
-            <PressableScale
-              key={card.id}
-              style={[styles.curationCard, isActive && styles.curationCardActive]}
-              onPress={() => onSelectCuration(card.id)}
-            >
-              <View style={[styles.curationIcon, { backgroundColor: isActive ? `${card.accent}22` : card.tone }]}>
-                <View style={[styles.curationIconGlyph, { backgroundColor: card.accent }]} />
-              </View>
-              <Text style={[styles.curationTitle, isActive && { color: card.accent }]}>{card.title}</Text>
-              <Text style={styles.curationCount}>{card.caption}</Text>
-            </PressableScale>
-          );
-        })}
-      </ScrollView>
-
-      {!isLoading && !errorMessage ? (
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>
-            {selectedCuration
-              ? (curationCards.find((c) => c.id === selectedCuration)?.caption ?? '추천 강의')
-              : '지금 인기 있는 강의'}
-          </Text>
-          {curationLoading ? (
-            <Text style={styles.loadingText}>불러오는 중...</Text>
-          ) : !selectedCuration ? (
-            <PressableScale style={styles.moreButton} onPress={() => navigation.switchTab('Search')}>
-              <Text style={styles.moreText}>더보기</Text>
-              <View style={styles.moreChevron} />
-            </PressableScale>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
 
-function BellIcon() {
+function GrowthMotionOverlay({
+  index,
+  breezeAnim,
+  butterflyAnims,
+}: {
+  index: number;
+  breezeAnim: Animated.Value;
+  butterflyAnims: Animated.Value[];
+}) {
+  const driftX = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-2, 4],
+  });
+  const driftY = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, -3],
+  });
+  const foregroundLeafX = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, -4],
+  });
+  const foregroundLeafY = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-1, 3],
+  });
+  const leafRotate = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-16deg', '-10deg'],
+  });
+  const secondaryLeafRotate = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['22deg', '28deg'],
+  });
+  const foregroundLeafRotate = breezeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['16deg', '21deg'],
+  });
   return (
-    <View style={styles.bellIcon}>
-      <View style={styles.bellBody} />
-      <View style={styles.bellClapper} />
+    <View pointerEvents="none" style={styles.motionLayer}>
+      {index >= 1 ? (
+        <Animated.View
+          style={[
+            styles.motionLeaf,
+            styles.motionLeafPrimary,
+            { transform: [{ translateX: driftX }, { translateY: driftY }, { rotate: leafRotate }] },
+          ]}
+        />
+      ) : null}
+      {index >= 2 ? (
+        <Animated.View
+          style={[
+            styles.motionLeaf,
+            styles.motionLeafSecondary,
+            { transform: [{ translateX: driftX }, { translateY: driftY }, { rotate: secondaryLeafRotate }] },
+          ]}
+        />
+      ) : null}
+      {index >= 3 ? (
+        <Animated.View
+          style={[
+            styles.motionLeaf,
+            styles.motionLeafForeground,
+            { transform: [{ translateX: foregroundLeafX }, { translateY: foregroundLeafY }, { rotate: foregroundLeafRotate }] },
+          ]}
+        />
+      ) : null}
+      {index >= 1 ? <AnimatedButterfly kind="yellow" progress={butterflyAnims[0]} variant="left" /> : null}
+      {index >= 2 ? <AnimatedButterfly kind="blue" progress={butterflyAnims[1]} variant="right" /> : null}
+      {index >= 3 ? <AnimatedButterfly kind={index === 4 ? 'red' : 'orange'} progress={butterflyAnims[2]} variant="upper" /> : null}
     </View>
   );
+}
+
+type ButterflyKind = keyof typeof HOME_BUTTERFLY_SPRITES;
+type ButterflyVariant = 'left' | 'right' | 'upper';
+
+const BUTTERFLY_PATHS: Record<ButterflyVariant, {
+  anchor: { left?: number; right?: number; top: number };
+  width: number;
+  height: number;
+  x: number[];
+  y: number[];
+  trail: { left?: number; right?: number; top: number }[];
+}> = {
+  left: {
+    anchor: { left: 24, top: 52 },
+    width: 28,
+    height: 28,
+    x: [0, 12, 26, 40],
+    y: [0, -5, -2, -8],
+    trail: [
+      { left: 19, top: 67 },
+      { left: 27, top: 63 },
+      { left: 37, top: 60 },
+      { left: 48, top: 58 },
+    ],
+  },
+  right: {
+    anchor: { right: 24, top: 40 },
+    width: 30,
+    height: 30,
+    x: [0, -12, -25, -38],
+    y: [0, -4, 3, -3],
+    trail: [
+      { right: 21, top: 56 },
+      { right: 31, top: 52 },
+      { right: 42, top: 50 },
+      { right: 53, top: 52 },
+    ],
+  },
+  upper: {
+    anchor: { right: 92, top: 24 },
+    width: 24,
+    height: 24,
+    x: [0, -8, -18, -28],
+    y: [0, 4, -2, 3],
+    trail: [
+      { right: 86, top: 38 },
+      { right: 94, top: 42 },
+      { right: 104, top: 41 },
+      { right: 114, top: 38 },
+    ],
+  },
+};
+
+function AnimatedButterfly({
+  kind,
+  progress,
+  variant,
+}: {
+  kind: ButterflyKind;
+  progress: Animated.Value;
+  variant: ButterflyVariant;
+}) {
+  const path = BUTTERFLY_PATHS[variant];
+  const translateX = progress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: path.x,
+  });
+  const translateY = progress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: path.y,
+  });
+  const opacity = progress.interpolate({
+    inputRange: [0, 0.08, 0.86, 1],
+    outputRange: [0, 0.9, 0.9, 0],
+  });
+  const rotate = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: ['-4deg', '4deg', '-2deg'],
+  });
+
+  return (
+    <>
+      {path.trail.map((dot, dotIndex) => (
+        <FlightTrailDot key={`${variant}-trail-${dotIndex}`} progress={progress} dot={dot} index={dotIndex} />
+      ))}
+      <Animated.View
+        style={[
+          styles.motionButterfly,
+          path.anchor,
+          {
+            width: path.width,
+            height: path.height,
+            opacity,
+            transform: [{ translateX }, { translateY }, { rotate }],
+          },
+        ]}
+      >
+        <Image source={HOME_BUTTERFLY_SPRITES[kind]} style={styles.motionButterflyArtwork} resizeMode="contain" />
+      </Animated.View>
+    </>
+  );
+}
+
+function FlightTrailDot({
+  progress,
+  dot,
+  index,
+}: {
+  progress: Animated.Value;
+  dot: { left?: number; right?: number; top: number };
+  index: number;
+}) {
+  const start = 0.12 + index * 0.12;
+  const opacity = progress.interpolate({
+    inputRange: [0, start, Math.min(start + 0.08, 0.95), Math.min(start + 0.24, 1)],
+    outputRange: [0, 0, 0.72, 0],
+  });
+
+  return <Animated.View style={[styles.flightTrailDot, dot, { opacity }]} />;
 }
 
 function isOtherMajor(course: Course, userDepartment?: string): boolean {
@@ -339,6 +566,60 @@ function isOtherMajor(course: Course, userDepartment?: string): boolean {
   if (isGeneral) return false;
   if (userDepartment && course.department === userDepartment) return false;
   return true;
+}
+
+type HomeCourseScope = 'major' | 'general' | 'other';
+
+function buildHomeRecommendations(courses: Course[], userDepartment?: string): Course[] {
+  if (!userDepartment) return courses;
+
+  const buckets: Record<HomeCourseScope, Course[]> = {
+    major: [],
+    general: [],
+    other: [],
+  };
+
+  courses.forEach((course) => {
+    buckets[getHomeCourseScope(course, userDepartment)].push(course);
+  });
+
+  if (buckets.major.length === 0) return [...buckets.general, ...buckets.other];
+
+  const result: Course[] = [];
+  const used = new Set<number>();
+  let majorCount = 0;
+  let otherCount = 0;
+
+  const take = (scope: HomeCourseScope) => {
+    const index = buckets[scope].findIndex((course) => !used.has(course.id));
+    if (index < 0) return false;
+    const [course] = buckets[scope].splice(index, 1);
+    result.push(course);
+    used.add(course.id);
+    if (scope === 'major') majorCount += 1;
+    if (scope === 'other') otherCount += 1;
+    return true;
+  };
+
+  while (result.length < courses.length) {
+    const before = result.length;
+
+    if (majorCount <= otherCount && take('major')) continue;
+    if (take('general')) continue;
+    if (take('major')) continue;
+    if (majorCount > otherCount && take('other')) continue;
+    if (take('other')) continue;
+
+    if (result.length === before) break;
+  }
+
+  return result;
+}
+
+function getHomeCourseScope(course: Course, userDepartment: string): HomeCourseScope {
+  if (course.type.includes('교양') || course.department.includes('교양')) return 'general';
+  if (course.department === userDepartment) return 'major';
+  return 'other';
 }
 
 function getTodaySeed() {
@@ -350,296 +631,249 @@ function getCourseWeight(course: Course) {
   return course.rating * 20 + Math.min(course.reviewCount, 200) * 0.7;
 }
 
-function getAutoReason(
-  course: Course | undefined,
-  growthCourses: Course[],
-  honeyCourses: Course[],
-  verifiedCourses: Course[],
-): string {
-  if (!course) return '추천 강의';
-  if (growthCourses.some((c) => c.id === course.id)) return '평점 상승 중';
-  if (honeyCourses.some((c) => c.id === course.id)) return '교양 꿀강의';
-  if (verifiedCourses.some((c) => c.id === course.id)) return '검증된 강의';
-  return '학생들의 선택';
-}
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
   },
   content: {
-    paddingBottom: 112,
+    gap: 12,
   },
-  headerWrap: {
-    gap: 26,
-  },
-  topGreeting: {
+  topUtilityRow: {
     paddingHorizontal: spacing.page,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: -2,
   },
-  greetingTitle: {
-    color: '#111827',
-    fontSize: 26,
-    lineHeight: 33,
-    fontWeight: '900',
-    letterSpacing: -0.9,
-  },
-  greetingSubtitle: {
-    marginTop: 8,
-    color: '#7a8495',
-    fontSize: 15,
-    lineHeight: 21,
-    fontWeight: '500',
-    letterSpacing: -0.3,
-  },
-  noticeButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+  utilityButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'rgba(255,255,255,0.42)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.08,
-    shadowRadius: 22,
-  },
-  bellIcon: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellBody: {
-    width: 16,
-    height: 17,
-    borderWidth: 2,
-    borderColor: '#111827',
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 9,
-    borderBottomWidth: 1,
-  },
-  bellClapper: {
-    width: 7,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#111827',
-    marginTop: -1,
+    borderColor: 'rgba(255,255,255,0.56)',
   },
   heroCard: {
     marginHorizontal: spacing.page,
-    minHeight: 224,
-    borderRadius: 28,
-    padding: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderRadius: spacing.radius,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.96)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 22 },
-    shadowOpacity: 0.09,
-    shadowRadius: 34,
+    borderColor: colors.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   heroCopy: {
-    flex: 1,
-    gap: 13,
+    minWidth: 0,
   },
-  heroReasonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  sectionAccent: {
-    color: colors.primary,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '900',
-    letterSpacing: -0.35,
-  },
-  reasonBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    backgroundColor: colors.primarySoft,
-  },
-  reasonBadgeText: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+  heroGreeting: {
+    color: colors.textMuted,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '500',
+    letterSpacing: -0.15,
   },
   heroTitle: {
-    color: '#111827',
-    fontSize: 28,
-    lineHeight: 36,
-    fontWeight: '900',
-    letterSpacing: -1.2,
-  },
-  heroMeta: {
-    color: '#65738a',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-    letterSpacing: -0.35,
-  },
-  heroTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  heroTag: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#e9f1ff',
-    color: '#526783',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '600',
-    letterSpacing: -0.25,
-  },
-  heroVisual: {
-    width: 122,
-    height: 122,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#edf4ff',
-    marginLeft: 18,
-  },
-  codeTile: {
-    width: 64,
-    height: 58,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7da7e8',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    zIndex: 2,
-  },
-  codeTileText: {
-    color: '#eaf2ff',
+    marginTop: 5,
+    color: colors.text,
     fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -1,
+    lineHeight: 32,
+    fontWeight: '800',
+    letterSpacing: -0.45,
   },
-  visualBase: {
-    position: 'absolute',
-    width: 86,
-    height: 22,
-    borderRadius: 10,
-    backgroundColor: '#d9e6f8',
-    bottom: 28,
+  heroAccent: {
+    color: colors.primary,
   },
-  sectionRow: {
-    paddingHorizontal: spacing.page,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    color: '#111827',
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '900',
-    letterSpacing: -0.65,
-  },
-  curationRail: {
-    paddingHorizontal: spacing.page,
-    gap: 14,
+  pointBox: {
+    marginTop: 8,
+    paddingHorizontal: 2,
     paddingBottom: 2,
   },
-  curationCard: {
-    width: 136,
-    minHeight: 158,
-    borderRadius: 20,
-    padding: 18,
+  pointHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.94)',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.07,
-    shadowRadius: 24,
+    gap: 10,
+    marginBottom: 6,
   },
-  curationCardActive: {
-    borderColor: 'rgba(22,73,154,0.22)',
-    shadowOpacity: 0.13,
-  },
-  resetText: {
-    color: colors.primary,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  loadingText: {
-    color: '#9aa5b8',
-    fontSize: 13,
-    fontWeight: '700',
+  pointText: {
+    color: colors.text,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
     letterSpacing: -0.2,
   },
-  curationIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  pointHint: {
+    color: colors.textTertiary,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.fillStrong,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  primaryButton: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  curationIconGlyph: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-  },
-  curationTitle: {
-    color: '#111827',
-    fontSize: 16,
-    lineHeight: 23,
-    fontWeight: '900',
-    letterSpacing: -0.55,
-  },
-  curationCount: {
-    color: '#7a8495',
+  primaryButtonText: {
+    color: '#FFFFFF',
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '600',
-    letterSpacing: -0.3,
-  },
-  moreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  moreText: {
-    color: '#8a96aa',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: -0.25,
   },
-  moreChevron: {
+  growthScene: {
+    alignSelf: 'stretch',
+    height: 178,
+    marginTop: 34,
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 10,
+    backgroundColor: '#EEF3F5',
+  },
+  growthSlide: {
+    width: '100%',
+    height: 178,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  growthArtwork: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '108%',
+    height: '108%',
+    marginLeft: '-4%',
+    marginTop: '-3%',
+  },
+  motionLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  motionLeaf: {
+    position: 'absolute',
+    width: 10,
+    height: 6,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 3,
+    backgroundColor: '#8FCA48',
+    opacity: 0.9,
+  },
+  motionLeafPrimary: {
+    right: 84,
+    top: 56,
+  },
+  motionLeafSecondary: {
+    left: 92,
+    top: 78,
     width: 8,
-    height: 8,
-    borderRightWidth: 2,
-    borderTopWidth: 2,
-    borderColor: '#8a96aa',
-    transform: [{ rotate: '45deg' }],
+    height: 5,
+    backgroundColor: '#9AD556',
+  },
+  motionLeafForeground: {
+    right: 116,
+    top: 88,
+    width: 12,
+    height: 7,
+    backgroundColor: '#78B83D',
+  },
+  motionButterfly: {
+    position: 'absolute',
+  },
+  motionButterflyArtwork: {
+    width: '100%',
+    height: '100%',
+  },
+  flightTrailDot: {
+    position: 'absolute',
+    width: 4,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: '#9DD9FF',
+  },
+  sectionHeader: {
+    paddingHorizontal: spacing.page,
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  benefitRail: {
+    paddingHorizontal: spacing.page,
+    gap: 8,
+    paddingBottom: 2,
+  },
+  benefitCard: {
+    width: 130,
+    minHeight: 80,
+    borderRadius: spacing.radius,
+    padding: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  benefitCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  benefitTitle: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  benefitCaption: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
+    letterSpacing: -0.15,
+  },
+  courseSection: {
+    gap: 8,
+    marginTop: 4,
+  },
+  loadingText: {
+    marginLeft: 'auto',
+    color: colors.textTertiary,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
   },
   courseRow: {
     paddingHorizontal: spacing.page,
-    marginBottom: 14,
   },
 });

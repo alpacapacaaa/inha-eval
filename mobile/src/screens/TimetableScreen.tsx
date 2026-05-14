@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,15 +9,12 @@ import {
   PERIODS,
   TIMETABLE_BY_COURSE_ID,
   TIMETABLE_DAYS,
-  TIMETABLE_STARTER_CART_IDS,
-  TIMETABLE_STARTER_SELECTED_IDS,
+  TimetableDay,
   TimetableSlot,
 } from '../lib/timetableData';
 import {
-  loadPinnedTimetableIds,
   loadSelectedTimetableIds,
   loadTimetableCartIds,
-  savePinnedTimetableIds,
   saveSelectedTimetableIds,
   saveTimetableCartIds,
 } from '../lib/storage/timetableStorage';
@@ -43,11 +41,21 @@ type TimetableCombo = {
   tone: ComboTone;
 };
 
-const PERIOD_HEIGHT = 54;
-const BOARD_PERIODS = PERIODS.slice(0, 9);
-const BLOCK_COLORS = ['#dfe9ff', '#e2f4ea', '#efe4ff', '#fff0cf', '#e7f0ff', '#dff5f3'];
-const BLOCK_TEXT_COLORS = ['#16499a', '#226d68', '#7655b8', '#8a5a28', '#24548f', '#1a6c68'];
-const MAX_COMBO_CREDITS = 18;
+type AvoidancePreferences = {
+  avoidMorning: boolean;
+  avoidEvening: boolean;
+  freeDay: TimetableDay | null;
+};
+
+const PERIOD_HEIGHT = 27;
+const DEFAULT_VISIBLE_PERIOD = 19;
+const BLOCK_COLORS = ['#E0EEFF', '#e2f4ea', '#efe4ff', '#fff0cf', '#EBF3FF', '#dff5f3'];
+const BLOCK_TEXT_COLORS = ['#23A9FF', '#226d68', '#7655b8', '#8a5a28', '#23A9FF', '#1a6c68'];
+const MAX_COMBO_CREDITS = 21;
+const MORNING_LATEST_END_PERIOD = 6;
+const RELAXED_EARLIEST_START_PERIOD = 5;
+const AFTERNOON_EARLIEST_START_PERIOD = 7;
+const EVENING_FREE_LATEST_END_PERIOD = 18;
 
 export function TimetableScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -57,8 +65,12 @@ export function TimetableScreen({ navigation }: Props) {
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [cartIds, setCartIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [activeComboId, setActiveComboId] = useState('balanced');
+  const [avoidancePreferences, setAvoidancePreferences] = useState<AvoidancePreferences>({
+    avoidMorning: false,
+    avoidEvening: false,
+    freeDay: null,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -69,26 +81,17 @@ export function TimetableScreen({ navigation }: Props) {
       setIsLoading(true);
 
       try {
-        const [courses, storedCartIds, storedSelectedIds, storedPinnedIds] = await Promise.all([
+        const [courses, storedCartIds, storedSelectedIds] = await Promise.all([
           getAllCourses(),
           loadTimetableCartIds(),
           loadSelectedTimetableIds(),
-          loadPinnedTimetableIds(),
         ]);
 
         if (!isActive) return;
 
-        const initialCartIds = storedCartIds.length > 0 ? storedCartIds : TIMETABLE_STARTER_CART_IDS;
-        const initialSelectedIds =
-          storedSelectedIds.length > 0 ? storedSelectedIds : TIMETABLE_STARTER_SELECTED_IDS;
-
         setAllCourses(courses);
-        setCartIds(initialCartIds);
-        setSelectedIds(initialSelectedIds.filter((id) => initialCartIds.includes(id)));
-        setPinnedIds(storedPinnedIds.filter((id) => initialCartIds.includes(id)));
-
-        if (storedCartIds.length === 0) await saveTimetableCartIds(initialCartIds);
-        if (storedSelectedIds.length === 0) await saveSelectedTimetableIds(initialSelectedIds);
+        setCartIds(storedCartIds);
+        setSelectedIds(storedSelectedIds.filter((id) => storedCartIds.includes(id)));
       } finally {
         if (isActive) setIsLoading(false);
       }
@@ -99,7 +102,11 @@ export function TimetableScreen({ navigation }: Props) {
   }, []);
 
   const timetableCourses = useMemo<TimetableCourse[]>(
-    () => allCourses.map((course) => ({ ...course, slots: TIMETABLE_BY_COURSE_ID[String(course.id)] ?? [] })),
+    () =>
+      allCourses.map((course) => ({
+        ...course,
+        slots: course.slots?.length ? course.slots : TIMETABLE_BY_COURSE_ID[String(course.id)] ?? [],
+      })),
     [allCourses],
   );
 
@@ -112,11 +119,10 @@ export function TimetableScreen({ navigation }: Props) {
   );
 
   const combos = useMemo(
-    () => buildCombos(cartCourses, user?.department, pinnedIds),
-    [cartCourses, user?.department, pinnedIds],
+    () => buildCombos(cartCourses, user?.department, avoidancePreferences),
+    [avoidancePreferences, cartCourses, user?.department],
   );
   const activeCombo = combos.find((c) => c.id === activeComboId) ?? combos[0];
-
   useEffect(() => {
     if (activeCombo && !combos.some((c) => c.id === activeComboId)) {
       setActiveComboId(activeCombo.id);
@@ -144,6 +150,11 @@ export function TimetableScreen({ navigation }: Props) {
   );
 
   const applyCombo = async (combo: TimetableCombo) => {
+    if (combo.courseIds.length === 0) {
+      setMessage('선택한 조건에 맞는 강의가 부족해 이 조합은 아직 만들 수 없어요.');
+      return;
+    }
+
     const nextIds = combo.courseIds.filter((id) => cartIds.includes(id));
     setActiveComboId(combo.id);
     setSelectedIds(nextIds);
@@ -154,49 +165,58 @@ export function TimetableScreen({ navigation }: Props) {
 
   const saveCombo = async () => {
     if (!activeCombo) return;
-    const nextCartIds = Array.from(new Set([...cartIds, ...activeCombo.courseIds]));
+    if (activeCombo.courseIds.length === 0) {
+      setMessage('먼저 조건에 맞는 담은 강의를 더 추가해주세요.');
+      return;
+    }
+
+    const existingNames = new Set(
+      timetableCourses
+        .filter((course) => cartIds.includes(String(course.id)))
+        .map((course) => normalizeCourseName(course.name)),
+    );
+    const additions: string[] = [];
+    let skippedDuplicateCount = 0;
+
+    for (const courseId of activeCombo.courseIds) {
+      const course = timetableCourses.find((item) => String(item.id) === courseId);
+      if (!course) continue;
+
+      const courseNameKey = normalizeCourseName(course.name);
+      if (existingNames.has(courseNameKey)) {
+        skippedDuplicateCount += 1;
+        continue;
+      }
+
+      existingNames.add(courseNameKey);
+      additions.push(courseId);
+    }
+
+    const nextCartIds = Array.from(new Set([...cartIds, ...additions]));
     setCartIds(nextCartIds);
     await saveTimetableCartIds(nextCartIds);
-    setMessage('이 조합을 보관함에 담았어요.');
+    setMessage(
+      skippedDuplicateCount > 0
+        ? `이 조합을 담았어요. 같은 강의 ${skippedDuplicateCount}개는 제외했어요.`
+        : '이 조합을 보관함에 담았어요.',
+    );
   };
+
+  // 전체 시간표에서 돌아올 때 선택 상태 동기화
+  const cartIdsRef = useRef(cartIds);
+  cartIdsRef.current = cartIds;
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    if (navigation.currentRoute.name !== 'Timetable') return;
+    loadSelectedTimetableIds().then((sIds) => setSelectedIds(sIds.filter((id) => cartIdsRef.current.includes(id))));
+  }, [navigation.currentRoute.name]);
 
   const handleBlockPress = async (courseId: string, courseName: string) => {
     const nextIds = selectedIds.filter((id) => id !== courseId);
     setSelectedIds(nextIds);
     await saveSelectedTimetableIds(nextIds);
     setMessage(`${courseName} 제거됨`);
-  };
-
-  const handleSavedCardPress = async (course: TimetableCourse) => {
-    const courseId = String(course.id);
-    if (selectedIds.includes(courseId)) {
-      const nextIds = selectedIds.filter((id) => id !== courseId);
-      setSelectedIds(nextIds);
-      await saveSelectedTimetableIds(nextIds);
-      setMessage(`${course.name} 제거됨`);
-      return;
-    }
-    if (hasConflict(courseId, selectedIds, cartCourses)) {
-      setMessage(`${course.name}: 시간이 겹치는 강의가 있어요`);
-      return;
-    }
-    const nextIds = [...selectedIds, courseId];
-    setSelectedIds(nextIds);
-    await saveSelectedTimetableIds(nextIds);
-    setMessage(`${course.name} 추가됨`);
-  };
-
-  const handleTogglePin = async (courseId: string) => {
-    const next = pinnedIds.includes(courseId)
-      ? pinnedIds.filter((id) => id !== courseId)
-      : [...pinnedIds, courseId];
-    setPinnedIds(next);
-    await savePinnedTimetableIds(next);
-    setMessage(
-      next.includes(courseId)
-        ? '고정 강의로 설정했어요. 모든 조합에 포함돼요.'
-        : '고정 해제했어요.',
-    );
   };
 
   if (isLoading) {
@@ -219,14 +239,13 @@ export function TimetableScreen({ navigation }: Props) {
         scrollEventThrottle={16}
       >
         <View style={styles.header}>
-          <Text style={styles.kicker}>시간표</Text>
           <Text style={styles.title}>이번 학기 시간표</Text>
         </View>
 
         <View style={styles.boardHeader}>
           <View style={styles.boardTitleWrap}>
             <View style={styles.boardTitleDot} />
-            <Text style={styles.boardTitle}>{activeCombo?.title ?? '현재'} 시간표</Text>
+            <Text style={styles.boardTitle}>현재 내 시간표</Text>
           </View>
           <PressableScale style={styles.fullButton} onPress={() => navigation.navigate({ name: 'TimetableFull' })}>
             <Text style={styles.fullButtonText}>전체 보기</Text>
@@ -238,7 +257,47 @@ export function TimetableScreen({ navigation }: Props) {
 
         <View style={styles.comboSectionHeader}>
           <Text style={styles.comboSectionTitle}>추천 조합</Text>
-          <Text style={styles.comboSectionSub}>평점 · 리뷰수 · 조합 완성도 기준 · 최대 {MAX_COMBO_CREDITS}학점</Text>
+          <Text style={styles.comboSectionSub}>
+            밸런스형은 시간과 학점을 고르게, 고평점 강의 위주는 만족도 높은 강의를 먼저 묶어요.
+          </Text>
+        </View>
+
+        <View style={styles.preferencePanel}>
+          <Text style={styles.preferenceTitle}>피하고 싶은 시간대</Text>
+          <View style={styles.preferenceChipRow}>
+            <PressableScale
+              style={[styles.preferenceChip, avoidancePreferences.avoidMorning ? styles.preferenceChipActive : null]}
+              onPress={() => setAvoidancePreferences((prev) => ({ ...prev, avoidMorning: !prev.avoidMorning }))}
+            >
+              <Text style={[styles.preferenceChipText, avoidancePreferences.avoidMorning ? styles.preferenceChipTextActive : null]}>
+                오전 수업 피하기
+              </Text>
+            </PressableScale>
+            <PressableScale
+              style={[styles.preferenceChip, avoidancePreferences.avoidEvening ? styles.preferenceChipActive : null]}
+              onPress={() => setAvoidancePreferences((prev) => ({ ...prev, avoidEvening: !prev.avoidEvening }))}
+            >
+              <Text style={[styles.preferenceChipText, avoidancePreferences.avoidEvening ? styles.preferenceChipTextActive : null]}>
+                저녁 수업 피하기
+              </Text>
+            </PressableScale>
+          </View>
+          <View style={styles.preferenceDays}>
+            {TIMETABLE_DAYS.map((day) => {
+              const active = avoidancePreferences.freeDay === day;
+              return (
+                <PressableScale
+                  key={`avoid-day-${day}`}
+                  style={[styles.dayPreferenceChip, active ? styles.dayPreferenceChipActive : null]}
+                  onPress={() => setAvoidancePreferences((prev) => ({ ...prev, freeDay: active ? null : day }))}
+                >
+                  <Text style={[styles.dayPreferenceText, active ? styles.dayPreferenceTextActive : null]}>
+                    {day} 비우기
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
         </View>
 
         <ScrollView
@@ -278,29 +337,6 @@ export function TimetableScreen({ navigation }: Props) {
           </View>
         </PressableScale>
 
-        <View style={styles.savedHeader}>
-          <Text style={styles.savedTitle}>보관한 강의</Text>
-          <PressableScale style={styles.viewAllButton} onPress={() => navigation.navigate({ name: 'CartFull' })}>
-            <Text style={styles.viewAllText}>전체 보기</Text>
-            <View style={styles.viewAllChevron} />
-          </PressableScale>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedRail}>
-          {cartCourses.slice(0, 8).map((course, index) => (
-            <SavedCourseCard
-              key={`saved-${course.id}`}
-              course={course}
-              index={index}
-              isPinned={pinnedIds.includes(String(course.id))}
-              isInTimetable={selectedIds.includes(String(course.id))}
-              onPress={() => handleSavedCardPress(course)}
-              onTogglePin={() => handleTogglePin(String(course.id))}
-            />
-          ))}
-        </ScrollView>
-
-        <View style={{ height: 8 }} />
       </ScrollView>
 
     </SafeAreaView>
@@ -320,7 +356,6 @@ function ComboCard({
     >
       <View style={styles.comboTop}>
         <View style={styles.comboLabelRow}>
-          <ComboGlyph tone={combo.tone} />
           <Text style={[styles.comboLabel, active ? styles.comboLabelActive : null]}>추천 {index + 1}</Text>
         </View>
         {active ? (
@@ -341,17 +376,11 @@ function ComboCard({
       <View style={styles.comboFooter}>
         <Text style={styles.comboCredits}>{credits}학점</Text>
         <View style={styles.comboFooterRule} />
-        <Text style={[styles.comboConfidence, { color: toneAccent(combo.tone) }]}>추천도 {combo.confidence}%</Text>
+        <Text style={[styles.comboConfidence, { color: toneAccent(combo.tone) }]}>
+          {combo.courseIds.length === 0 ? '추천 불가' : `추천도 ${combo.confidence}%`}
+        </Text>
       </View>
     </PressableScale>
-  );
-}
-
-function ComboGlyph({ tone }: { tone: ComboTone }) {
-  return (
-    <View style={[styles.comboGlyph, { backgroundColor: toneAccent(tone) + '22' }]}>
-      <View style={[styles.comboGlyphInner, { backgroundColor: toneAccent(tone) }]} />
-    </View>
   );
 }
 
@@ -362,7 +391,9 @@ function TimetableBoard({
   entries: Array<TimetableSlot & { backgroundColor: string; textColor: string; courseId: string; courseName: string; professor: string }>;
   onBlockPress: (courseId: string, courseName: string) => void;
 }) {
-  const boardHeight = BOARD_PERIODS.length * PERIOD_HEIGHT;
+  const visiblePeriods = getVisiblePeriods(entries);
+  const lastVisiblePeriod = visiblePeriods[visiblePeriods.length - 1]?.period ?? DEFAULT_VISIBLE_PERIOD;
+  const boardHeight = visiblePeriods.length * PERIOD_HEIGHT;
 
   return (
     <View style={styles.boardCard}>
@@ -374,19 +405,22 @@ function TimetableBoard({
       </View>
       <View style={styles.boardBody}>
         <View style={[styles.timeColumn, { height: boardHeight }]}>
-          {BOARD_PERIODS.map((period) => (
+          {visiblePeriods.map((period) => (
             <View key={`period-${period.period}`} style={styles.timeCell}>
-              <Text style={styles.timeText}>{period.time}</Text>
+              <Text style={styles.timeText}>{period.period % 2 === 1 ? period.time : ''}</Text>
             </View>
           ))}
         </View>
         {TIMETABLE_DAYS.map((day) => (
           <View key={`column-${day}`} style={[styles.dayColumn, { height: boardHeight }]}>
-            {BOARD_PERIODS.map((period) => (
-              <View key={`grid-${day}-${period.period}`} style={styles.gridLine} />
+            {visiblePeriods.map((period) => (
+              <View
+                key={`grid-${day}-${period.period}`}
+                style={period.period % 2 === 1 ? styles.gridLine : styles.gridSpacer}
+              />
             ))}
             {entries
-              .filter((entry) => entry.day === day && entry.startPeriod <= BOARD_PERIODS.length)
+              .filter((entry) => entry.day === day && entry.startPeriod <= lastVisiblePeriod)
               .map((entry) => (
                 <PressableScale
                   key={`${entry.courseId}-${day}-${entry.startPeriod}`}
@@ -395,7 +429,7 @@ function TimetableBoard({
                     {
                       top: (entry.startPeriod - 1) * PERIOD_HEIGHT + 4,
                       height:
-                        Math.min(entry.endPeriod, BOARD_PERIODS.length) * PERIOD_HEIGHT -
+                        Math.min(entry.endPeriod, lastVisiblePeriod) * PERIOD_HEIGHT -
                         (entry.startPeriod - 1) * PERIOD_HEIGHT - 8,
                       backgroundColor: entry.backgroundColor,
                     },
@@ -415,86 +449,39 @@ function TimetableBoard({
   );
 }
 
-function SavedCourseCard({
-  course, index, isPinned, isInTimetable, onPress, onTogglePin,
-}: {
-  course: TimetableCourse;
-  index: number;
-  isPinned: boolean;
-  isInTimetable: boolean;
-  onPress: () => void;
-  onTogglePin: () => void;
-}) {
-  const bookmarkColor = BLOCK_TEXT_COLORS[index % BLOCK_TEXT_COLORS.length];
-
-  return (
-    <PressableScale
-      style={[
-        styles.savedCard,
-        isPinned ? styles.savedCardPinned : null,
-        isInTimetable ? styles.savedCardActive : null,
-      ]}
-      onPress={onPress}
-    >
-      <View style={[styles.savedBookmark, { backgroundColor: bookmarkColor }]}>
-        <View style={styles.savedBookmarkCut} />
-      </View>
-      <View style={styles.savedCopy}>
-        <Text style={styles.savedCourseName} numberOfLines={1}>{course.name}</Text>
-        <Text style={styles.savedCourseMeta} numberOfLines={1}>
-          {course.professor} 교수 · {course.slots[0]?.location ?? '강의실 미정'}
-        </Text>
-      </View>
-      <View style={styles.savedCardRight}>
-        <View style={[styles.timetableIndicator, isInTimetable ? styles.timetableIndicatorActive : null]} />
-        <PressableScale style={[styles.pinButton, isPinned ? styles.pinButtonActive : null]} onPress={onTogglePin}>
-          <View style={[styles.pinDot, isPinned ? styles.pinDotActive : null]} />
-        </PressableScale>
-      </View>
-    </PressableScale>
-  );
-}
-
 // ─── 조합 빌더 ────────────────────────────────────────────────────────────────
 
 function buildCombos(
   courses: TimetableCourse[],
   userDepartment?: string,
-  pinnedIds: string[] = [],
+  preferences?: AvoidancePreferences,
 ): TimetableCombo[] {
   if (courses.length === 0) return [];
 
   const deptLabel = userDepartment
-    ? `${userDepartment.replace(/학과$|학부$|전공$/u, '')} `
+    ? `${userDepartment} `
     : '';
 
-  // 고정 강의가 항상 먼저 선택되도록 선호 목록 앞에 배치
   const makePool = (filtered: TimetableCourse[]) => {
-    const filteredIds = filtered.map((c) => String(c.id));
-    const pinFirst = pinnedIds.filter((id) => filteredIds.includes(id));
-    const rest = filteredIds.filter((id) => !pinnedIds.includes(id));
-    return [...pinFirst, ...rest];
+    return filtered.map((c) => String(c.id));
   };
 
-  const allPool    = makePool(courses);
-  const byRating   = [...courses].sort((a, b) => b.rating - a.rating);
-  const morningPool = makePool(courses.filter((c) => c.slots.some((s) => s.startPeriod <= 4)));
-  const relaxedPool = makePool(courses.filter((c) => c.slots.every((s) => s.startPeriod >= 3)));
-  const earlyPool   = makePool(courses.filter((c) => c.slots.every((s) => s.endPeriod <= 7)));
+  const comboSource = applyAvoidancePreferences(courses, preferences);
+
+  const allPool    = makePool(comboSource);
+  const byRating   = [...comboSource].sort((a, b) => b.rating - a.rating);
+  const morningPool = makePool(comboSource.filter((c) => c.slots.every((s) => s.endPeriod <= MORNING_LATEST_END_PERIOD)));
+  const relaxedPool = makePool(comboSource.filter((c) => c.slots.every((s) => s.startPeriod >= RELAXED_EARLIEST_START_PERIOD)));
+  const afternoonPool = makePool(comboSource.filter((c) => c.slots.every((s) => s.startPeriod >= AFTERNOON_EARLIEST_START_PERIOD)));
   const ratingPool  = makePool(byRating);
 
-  const balanced   = pickCompatibleCourses(courses, allPool,    7, MAX_COMBO_CREDITS);
-  const morning    = pickCompatibleCourses(courses, morningPool, 6, MAX_COMBO_CREDITS);
-  const relaxed    = pickCompatibleCourses(courses, relaxedPool, 6, MAX_COMBO_CREDITS, 2); // 하루 최대 2강의
-  const earlyEnd   = pickCompatibleCourses(courses, earlyPool,   6, MAX_COMBO_CREDITS);
-  const highRating = pickCompatibleCourses(courses, ratingPool,  6, MAX_COMBO_CREDITS);
+  const balanced   = pickCompatibleCourses(comboSource, allPool,    7, MAX_COMBO_CREDITS);
+  const morning    = pickCompatibleCourses(comboSource, morningPool, 6, MAX_COMBO_CREDITS);
+  const relaxed    = pickCompatibleCourses(comboSource, relaxedPool, 6, MAX_COMBO_CREDITS, 2); // 하루 최대 2강의
+  const afternoon  = pickCompatibleCourses(comboSource, afternoonPool, 6, MAX_COMBO_CREDITS);
+  const highRating = pickCompatibleCourses(comboSource, ratingPool,  6, MAX_COMBO_CREDITS);
 
-  const safeMorning  = morning.length >= 3    ? morning    : balanced.slice(0, 6);
-  const safeRelaxed  = relaxed.length >= 3    ? relaxed    : balanced.slice(1, 7);
-  const safeEarly    = earlyEnd.length >= 3   ? earlyEnd   : balanced.slice(0, 6);
-  const safeHigh     = highRating.length >= 3 ? highRating : balanced.slice(0, 6);
-
-  const get = (ids: string[]) => courses.filter((c) => ids.includes(String(c.id)));
+  const get = (ids: string[]) => comboSource.filter((c) => ids.includes(String(c.id)));
 
   const result: TimetableCombo[] = [
     {
@@ -502,62 +489,115 @@ function buildCombos(
       title: `${deptLabel}밸런스형`,
       tags: buildComboTags(get(balanced)),
       description: buildComboDescription(get(balanced), 'balanced'),
-      confidence: calculateConfidence(get(balanced), 7, 4),
+      confidence: calculateConfidence(get(balanced), 7, 'balanced'),
       courseIds: balanced,
       tone: 'blue',
     },
     {
       id: 'highRating',
       title: '고평점 강의 위주',
-      tags: buildComboTags(get(safeHigh)),
-      description: buildComboDescription(get(safeHigh), 'highRating'),
-      confidence: calculateConfidence(get(safeHigh), 6, 6),
-      courseIds: safeHigh,
+      tags: buildComboTags(get(highRating)),
+      description: buildComboDescription(get(highRating), 'highRating'),
+      confidence: calculateConfidence(get(highRating), 6, 'highRating'),
+      courseIds: highRating,
       tone: 'rose',
     },
     {
       id: 'morning',
       title: '오전 집중형',
-      tags: buildComboTags(get(safeMorning)),
-      description: buildComboDescription(get(safeMorning), 'morning'),
-      confidence: calculateConfidence(get(safeMorning), 6, -2),
-      courseIds: safeMorning,
+      tags: buildComboTags(get(morning)),
+      description: buildComboDescription(get(morning), 'morning'),
+      confidence: calculateConfidence(get(morning), 6, 'morning'),
+      courseIds: morning,
       tone: 'green',
     },
     {
       id: 'relaxed',
       title: '공강 여유형',
-      tags: buildComboTags(get(safeRelaxed)),
-      description: buildComboDescription(get(safeRelaxed), 'relaxed'),
-      confidence: calculateConfidence(get(safeRelaxed), 6, 0),
-      courseIds: safeRelaxed,
+      tags: buildComboTags(get(relaxed)),
+      description: buildComboDescription(get(relaxed), 'relaxed'),
+      confidence: calculateConfidence(get(relaxed), 6, 'relaxed'),
+      courseIds: relaxed,
       tone: 'lilac',
     },
     {
-      id: 'earlyEnd',
-      title: '저녁 없는 조합',
-      tags: buildComboTags(get(safeEarly)),
-      description: buildComboDescription(get(safeEarly), 'earlyEnd'),
-      confidence: calculateConfidence(get(safeEarly), 6, 2),
-      courseIds: safeEarly,
+      id: 'afternoonOnly',
+      title: '오전 수업 없는 조합',
+      tags: buildComboTags(get(afternoon)),
+      description: buildComboDescription(get(afternoon), 'afternoonOnly'),
+      confidence: calculateConfidence(get(afternoon), 6, 'afternoonOnly'),
+      courseIds: afternoon,
       tone: 'amber',
     },
   ];
 
-  return result.map((c, i) => ({ ...c, confidence: Math.min(c.confidence + i, 99) }));
+  return harmonizeDuplicateComboConfidence(result);
 }
 
-function calculateConfidence(courses: TimetableCourse[], targetCount: number, typeOffset: number): number {
-  if (courses.length === 0) return 72;
+function applyAvoidancePreferences(
+  courses: TimetableCourse[],
+  preferences?: AvoidancePreferences,
+) {
+  if (!preferences) return courses;
+
+  return courses.filter((course) =>
+    course.slots.every((slot) => {
+      if (preferences.avoidMorning && slot.startPeriod <= MORNING_LATEST_END_PERIOD) return false;
+      if (preferences.avoidEvening && slot.endPeriod > EVENING_FREE_LATEST_END_PERIOD) return false;
+      if (preferences.freeDay && slot.day === preferences.freeDay) return false;
+      return true;
+    }),
+  );
+}
+
+function calculateConfidence(
+  courses: TimetableCourse[],
+  targetCount: number,
+  kind: 'balanced' | 'morning' | 'relaxed' | 'afternoonOnly' | 'highRating',
+): number {
+  if (courses.length === 0) return 0;
 
   const avgRating  = courses.reduce((s, c) => s + c.rating, 0) / courses.length;
   const avgReviews = courses.reduce((s, c) => s + c.reviewCount, 0) / courses.length;
+  const totalCredits = courses.reduce((sum, course) => sum + (course.credits ?? 3), 0);
 
-  const ratingScore   = Math.round(((avgRating - 1) / 4) * 18 + 56);
-  const reviewBonus   = Math.min(Math.round(avgReviews / 6), 10);
-  const completeness  = Math.round(Math.min(courses.length / targetCount, 1) * 8);
+  const ratingScore = Math.round(Math.max(0, Math.min(avgRating / 5, 1)) * 42);
+  const reviewScore = Math.round(Math.min(avgReviews / 12, 1) * 18);
+  const completenessScore = Math.round(Math.min(courses.length / targetCount, 1) * 18);
+  const creditScore = Math.round(Math.min(totalCredits / 18, 1) * 8);
+  const fitScore = calculateKindFitScore(courses, kind);
 
-  return Math.min(Math.max(ratingScore + reviewBonus + completeness + typeOffset, 72), 97);
+  return Math.max(0, Math.min(ratingScore + reviewScore + completenessScore + creditScore + fitScore, 99));
+}
+
+function harmonizeDuplicateComboConfidence(combos: TimetableCombo[]) {
+  const bestConfidenceBySignature = new Map<string, number>();
+
+  combos.forEach((combo) => {
+    if (combo.courseIds.length === 0) {
+      return;
+    }
+
+    const signature = getComboSignature(combo.courseIds);
+    const currentBest = bestConfidenceBySignature.get(signature) ?? 0;
+    bestConfidenceBySignature.set(signature, Math.max(currentBest, combo.confidence));
+  });
+
+  return combos.map((combo) => {
+    if (combo.courseIds.length === 0) {
+      return combo;
+    }
+
+    const signature = getComboSignature(combo.courseIds);
+    return {
+      ...combo,
+      confidence: bestConfidenceBySignature.get(signature) ?? combo.confidence,
+    };
+  });
+}
+
+function getComboSignature(courseIds: string[]) {
+  return [...courseIds].sort((left, right) => left.localeCompare(right, undefined, { numeric: true })).join('|');
 }
 
 function buildComboTags(courses: TimetableCourse[]): string[] {
@@ -569,35 +609,42 @@ function buildComboTags(courses: TimetableCourse[]): string[] {
   if (!allSlots.some((s) => s.day === '월')) tags.push('월 공강');
   if (!allSlots.some((s) => s.day === '금')) tags.push('금 공강');
 
-  const morningRatio = allSlots.filter((s) => s.startPeriod <= 4).length / allSlots.length;
-  if (morningRatio > 0.55) tags.push('오전 수업');
+  if (allSlots.every((s) => s.endPeriod <= MORNING_LATEST_END_PERIOD)) tags.push('오전 집중');
+  if (allSlots.every((s) => s.startPeriod >= AFTERNOON_EARLIEST_START_PERIOD)) tags.push('오후 수업');
 
   const avgRating = courses.reduce((s, c) => s + c.rating, 0) / (courses.length || 1);
   if (avgRating >= 4.3) tags.push('고평점');
 
-  if (allSlots.every((s) => s.endPeriod <= 7)) tags.push('저녁 여유');
+  if (allSlots.every((s) => s.endPeriod <= EVENING_FREE_LATEST_END_PERIOD)) tags.push('저녁 여유');
 
   return tags.slice(0, 3);
 }
 
 function buildComboDescription(
   courses: TimetableCourse[],
-  kind: 'balanced' | 'morning' | 'relaxed' | 'earlyEnd' | 'highRating',
+  kind: 'balanced' | 'morning' | 'relaxed' | 'afternoonOnly' | 'highRating',
 ): string {
-  if (courses.length === 0) return '담은 강의에서 조합을 구성 중이에요.';
+  if (courses.length === 0) {
+    if (kind === 'morning') return '오전에 끝나는 담은 강의가 부족해 조합을 만들지 못했어요.';
+    if (kind === 'afternoonOnly') return '정오 이후 강의가 부족해 조합을 만들지 못했어요.';
+    if (kind === 'relaxed') return '공강을 넉넉히 둘 수 있는 강의 조합이 아직 부족해요.';
+    if (kind === 'highRating') return '평점 데이터를 비교할 담은 강의가 아직 부족해요.';
+    return '선택한 조건에 맞는 담은 강의가 아직 부족해요.';
+  }
 
   const avgRating    = (courses.reduce((s, c) => s + c.rating, 0) / courses.length).toFixed(1);
   const totalCredits = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
   const allSlots     = courses.flatMap((c) => c.slots);
-  const freeDay      = !allSlots.some((s) => s.day === '월') ? '월'
-    : !allSlots.some((s) => s.day === '금') ? '금' : null;
+  const freeDays = TIMETABLE_DAYS.filter((day) => !allSlots.some((slot) => slot.day === day));
+  const freeDayCopy = freeDays.length > 0 ? `, ${freeDays.slice(0, 2).join('·')} 공강` : '';
+  const maxDayLoad = getMaxDayLoad(courses);
 
   switch (kind) {
-    case 'balanced':   return `평균 ${avgRating}점, ${totalCredits}학점${freeDay ? `, ${freeDay} 공강` : ''}으로 균형 잡힌 조합이에요.`;
-    case 'highRating': return `보관 강의 중 평점 높은 순으로 구성한 ${totalCredits}학점 조합이에요.`;
-    case 'morning':    return `오전 중심 ${totalCredits}학점으로, 오후 시간을 자유롭게 쓸 수 있어요.`;
-    case 'relaxed':    return `하루 최대 2강의, ${totalCredits}학점으로 공강이 넉넉한 조합이에요.`;
-    case 'earlyEnd':   return `저녁 강의 없이 ${totalCredits}학점을 채운 조합이에요.`;
+    case 'balanced':   return `평균 ${avgRating}점, ${totalCredits}학점${freeDayCopy}을 함께 고려한 균형 조합이에요.`;
+    case 'highRating': return `평균 ${avgRating}점 강의를 우선으로 묶은 ${totalCredits}학점 조합이에요.`;
+    case 'morning':    return `오전에 끝나는 강의만 모은 ${totalCredits}학점 조합이에요.`;
+    case 'relaxed':    return `하루 최대 ${maxDayLoad}개 강의로 간격을 넉넉히 둔 ${totalCredits}학점 조합이에요.`;
+    case 'afternoonOnly': return `정오 이후 수업만 모은 ${totalCredits}학점 조합이에요.`;
   }
 }
 
@@ -617,7 +664,7 @@ function pickCompatibleCourses(
 
     const course = courses.find((c) => String(c.id) === id);
     if (!course) return;
-    if (pickedNames.has(course.name)) return;
+    if (pickedNames.has(normalizeCourseName(course.name))) return;
     if (hasConflict(id, picked, courses)) return;
 
     const courseCredits = course.credits ?? 3;
@@ -635,20 +682,70 @@ function pickCompatibleCourses(
     }
 
     picked.push(id);
-    pickedNames.add(course.name);
+    pickedNames.add(normalizeCourseName(course.name));
     totalCredits += courseCredits;
   };
 
   preferredIds.forEach(tryPick);
-  courses.forEach((c) => tryPick(String(c.id)));
 
   return picked;
+}
+
+function calculateKindFitScore(
+  courses: TimetableCourse[],
+  kind: 'balanced' | 'morning' | 'relaxed' | 'afternoonOnly' | 'highRating',
+) {
+  const slots = courses.flatMap((course) => course.slots);
+  if (slots.length === 0) return 0;
+
+  if (kind === 'morning') {
+    return slots.every((slot) => slot.endPeriod <= MORNING_LATEST_END_PERIOD) ? 13 : 0;
+  }
+
+  if (kind === 'afternoonOnly') {
+    return slots.every((slot) => slot.startPeriod >= AFTERNOON_EARLIEST_START_PERIOD) ? 13 : 0;
+  }
+
+  if (kind === 'relaxed') {
+    const maxLoad = getMaxDayLoad(courses);
+    return maxLoad <= 2 ? 13 : Math.max(0, 13 - (maxLoad - 2) * 4);
+  }
+
+  if (kind === 'highRating') {
+    const average = courses.reduce((sum, course) => sum + course.rating, 0) / courses.length;
+    return Math.round(Math.max(0, Math.min(average / 5, 1)) * 13);
+  }
+
+  const activeDays = new Set(slots.map((slot) => slot.day)).size;
+  const spreadScore = Math.round((activeDays / TIMETABLE_DAYS.length) * 8);
+  const stableLoadScore = Math.max(0, 5 - Math.max(getMaxDayLoad(courses) - 2, 0));
+  return spreadScore + stableLoadScore;
+}
+
+function getMaxDayLoad(courses: TimetableCourse[]) {
+  const counts = new Map<TimetableDay, number>();
+
+  courses.forEach((course) => {
+    course.slots.forEach((slot) => {
+      counts.set(slot.day, (counts.get(slot.day) ?? 0) + 1);
+    });
+  });
+
+  return Math.max(0, ...counts.values());
 }
 
 function getComboCredits(combo: TimetableCombo, courses: TimetableCourse[]) {
   return courses
     .filter((c) => combo.courseIds.includes(String(c.id)))
     .reduce((s, c) => s + (c.credits ?? 3), 0);
+}
+
+function getVisiblePeriods(entries: TimetableSlot[]) {
+  const latestPeriod = entries.reduce(
+    (maxPeriod, entry) => Math.max(maxPeriod, entry.endPeriod),
+    DEFAULT_VISIBLE_PERIOD,
+  );
+  return PERIODS.slice(0, Math.min(latestPeriod, PERIODS.length));
 }
 
 function hasConflict(courseId: string, selectedIds: string[], courses: TimetableCourse[]) {
@@ -669,9 +766,13 @@ function hasConflict(courseId: string, selectedIds: string[], courses: Timetable
   );
 }
 
+function normalizeCourseName(name: string) {
+  return name.trim().replace(/\s+/g, '').toLowerCase();
+}
+
 function toneAccent(tone: ComboTone): string {
   switch (tone) {
-    case 'blue':   return '#3976ce';
+    case 'blue':   return colors.primary;
     case 'green':  return '#226d68';
     case 'lilac':  return '#7655b8';
     case 'amber':  return '#b07428';
@@ -686,89 +787,75 @@ const styles = StyleSheet.create({
   loadingState:{ flex: 1, justifyContent: 'center' },
   content:     { paddingBottom: 112, gap: spacing.group },
 
-  header:    { paddingHorizontal: spacing.page, gap: 6 },
-  kicker:    { color: colors.primary, fontSize: 14, lineHeight: 18, fontWeight: '900', letterSpacing: -0.35 },
-  title:     { color: '#111827', fontSize: 26, lineHeight: 33, fontWeight: '900', letterSpacing: -1 },
+  header:    { paddingHorizontal: spacing.page, gap: 5 },
+  title:     { color: colors.text, fontSize: 22, lineHeight: 29, fontWeight: '800', letterSpacing: -0.4 },
 
   boardHeader:   { paddingHorizontal: spacing.page, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   boardTitleWrap:{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
-  boardTitleDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#3976ce' },
-  boardTitle:    { flex: 1, color: '#111827', fontSize: 18, lineHeight: 23, fontWeight: '900', letterSpacing: -0.6 },
-  fullButton:    { minHeight: 40, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)' },
-  fullButtonText:{ color: '#65738a', fontSize: 13, fontWeight: '600', letterSpacing: -0.3 },
+  boardTitleDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  boardTitle:    { flex: 1, color: '#111318', fontSize: 16, lineHeight: 22, fontWeight: '800', letterSpacing: -0.3 },
+  fullButton:    { minHeight: 40, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, backgroundColor: '#ffffff', borderWidth: 0 },
+  fullButtonText:{ color: '#5E6E85', fontSize: 13, fontWeight: '600', letterSpacing: -0.3 },
   fullButtonArrow:{ width: 8, height: 8, borderRightWidth: 2, borderTopWidth: 2, borderColor: '#8f9caf', transform: [{ rotate: '45deg' }] },
 
-  boardCard:   { marginHorizontal: spacing.page, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12, shadowColor: colors.primary, shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.08, shadowRadius: 28 },
+  boardCard:   { marginHorizontal: spacing.page, borderRadius: spacing.radius, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 },
   dayHeaderRow:{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   timeHeaderCell:{ width: 44 },
-  dayHeaderText: { flex: 1, color: '#111827', fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  dayHeaderText: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '800', textAlign: 'center' },
   boardBody:   { flexDirection: 'row' },
   timeColumn:  { width: 44 },
   timeCell:    { height: PERIOD_HEIGHT, justifyContent: 'flex-start' },
   timeText:    { color: '#8793a8', fontSize: 11, lineHeight: 14, fontWeight: '600' },
   dayColumn:   { flex: 1, position: 'relative', borderLeftWidth: 1, borderColor: '#e8edf5' },
   gridLine:    { height: PERIOD_HEIGHT, borderTopWidth: 1, borderColor: '#edf1f7' },
+  gridSpacer:  { height: PERIOD_HEIGHT },
   scheduleBlock:{ position: 'absolute', left: 3, right: 3, borderRadius: 9, paddingHorizontal: 6, paddingVertical: 7, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
-  blockTitle:  { fontSize: 10, lineHeight: 13, fontWeight: '900', letterSpacing: -0.35 },
-  blockMeta:   { marginTop: 5, color: '#65738a', fontSize: 9, lineHeight: 11, fontWeight: '600' },
+  blockTitle:  { fontSize: 10, lineHeight: 13, fontWeight: '800', letterSpacing: -0.35 },
+  blockMeta:   { marginTop: 5, color: '#5E6E85', fontSize: 9, lineHeight: 11, fontWeight: '600' },
 
   comboSectionHeader:{ paddingHorizontal: spacing.page, gap: 4 },
-  comboSectionTitle: { color: '#111827', fontSize: 19, lineHeight: 24, fontWeight: '900', letterSpacing: -0.65 },
-  comboSectionSub:   { color: '#9aa5b8', fontSize: 12, fontWeight: '700', letterSpacing: -0.2 },
+  comboSectionTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: '800', letterSpacing: -0.3 },
+  comboSectionSub:   { color: colors.textTertiary, fontSize: 12, lineHeight: 18, fontWeight: '600', letterSpacing: -0.2 },
+  preferencePanel:   { marginHorizontal: spacing.page, borderRadius: spacing.radius, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 14, paddingVertical: 14, gap: 12 },
+  preferenceTitle:   { color: colors.text, fontSize: 14, lineHeight: 19, fontWeight: '800', letterSpacing: -0.3 },
+  preferenceChipRow: { flexDirection: 'row', gap: 8 },
+  preferenceChip:    { flex: 1, minHeight: 40, borderRadius: 8, backgroundColor: '#F4F7FB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  preferenceChipActive:{ backgroundColor: '#EAF7FF', borderWidth: 1, borderColor: colors.primary },
+  preferenceChipText:{ color: '#6E7A88', fontSize: 12, lineHeight: 16, fontWeight: '800', letterSpacing: -0.2 },
+  preferenceChipTextActive:{ color: colors.primary },
+  preferenceDays:    { flexDirection: 'row', gap: 6 },
+  dayPreferenceChip: { flex: 1, minHeight: 34, borderRadius: 8, backgroundColor: '#F4F7FB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  dayPreferenceChipActive:{ backgroundColor: colors.primary },
+  dayPreferenceText: { color: '#8793A8', fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -0.15 },
+  dayPreferenceTextActive:{ color: '#FFFFFF' },
 
-  comboRail:      { paddingHorizontal: spacing.page, gap: 16, paddingVertical: 2 },
-  comboCard:      { width: 246, minHeight: 224, borderRadius: 24, padding: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.95)', backgroundColor: 'rgba(255,255,255,0.78)', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.08, shadowRadius: 26 },
-  comboCardActive:{ borderColor: '#3976ce', backgroundColor: 'rgba(255,255,255,0.94)' },
+  comboRail:      { paddingHorizontal: spacing.page, gap: 12, paddingVertical: 2 },
+  comboCard:      { width: 238, minHeight: 210, borderRadius: spacing.radius, padding: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface },
+  comboCardActive:{ borderColor: colors.primary, backgroundColor: colors.surface },
   comboTop:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   comboLabelRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  comboGlyph:     { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  comboGlyphInner:{ width: 9, height: 9, borderRadius: 3, transform: [{ rotate: '45deg' }] },
-  comboLabel:     { color: '#65738a', fontSize: 14, fontWeight: '600', letterSpacing: -0.3 },
+  comboLabel:     { color: '#5E6E85', fontSize: 14, fontWeight: '600', letterSpacing: -0.3 },
   comboLabelActive:{ color: colors.primary },
-  checkCircle:    { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#3976ce' },
+  checkCircle:    { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
   checkMark:      { width: 12, height: 7, borderLeftWidth: 2, borderBottomWidth: 2, borderColor: '#ffffff', transform: [{ rotate: '-45deg' }, { translateY: -1 }] },
-  comboTitle:     { marginTop: 28, color: '#111827', fontSize: 22, lineHeight: 28, fontWeight: '900', letterSpacing: -0.8 },
+  comboTitle:     { marginTop: 22, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '800', letterSpacing: -0.4 },
   comboTags:      { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  comboTag:       { overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#eef4ff', color: '#526783', fontSize: 12, lineHeight: 15, fontWeight: '600', letterSpacing: -0.25 },
-  comboDescription:{ marginTop: 14, color: '#65738a', fontSize: 14, lineHeight: 22, fontWeight: '700', letterSpacing: -0.3 },
+  comboTag:       { overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#EBF3FF', color: '#4A5E78', fontSize: 12, lineHeight: 15, fontWeight: '600', letterSpacing: -0.25 },
+  comboDescription:{ marginTop: 14, color: colors.textSecondary, fontSize: 14, lineHeight: 22, fontWeight: '600', letterSpacing: -0.3 },
   comboDivider:   { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginTop: 24 },
   comboFooter:    { marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  comboCredits:   { color: '#65738a', fontSize: 15, fontWeight: '700', letterSpacing: -0.35 },
+  comboCredits:   { color: colors.textSecondary, fontSize: 15, fontWeight: '700', letterSpacing: -0.35 },
   comboFooterRule:{ width: 1, height: 16, backgroundColor: 'rgba(101,115,138,0.26)' },
-  comboConfidence:{ fontSize: 15, fontWeight: '900', letterSpacing: -0.35 },
+  comboConfidence:{ fontSize: 15, fontWeight: '800', letterSpacing: -0.35 },
 
   pagerDots:    { flexDirection: 'row', justifyContent: 'center', gap: 9, marginTop: -4 },
   pagerDot:     { width: 8, height: 8, borderRadius: 4, backgroundColor: '#dfe6f0' },
-  pagerDotActive:{ width: 10, backgroundColor: '#3976ce' },
-  messageText:  { marginTop: -4, marginHorizontal: spacing.page, color: colors.primary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
-
-  saveButton:     { minHeight: 62, marginHorizontal: spacing.page, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, backgroundColor: '#2866d6', shadowColor: '#2866d6', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.22, shadowRadius: 28 },
-  saveButtonText: { color: '#ffffff', fontSize: 18, lineHeight: 23, fontWeight: '900', letterSpacing: -0.45 },
+  pagerDotActive:{ width: 10, backgroundColor: colors.primary },
+  messageText:  { marginTop: -4, marginHorizontal: 18, color: colors.primary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  saveButton:     { minHeight: 52, marginHorizontal: spacing.page, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.primary },
+  saveButtonText: { color: '#ffffff', fontSize: 15, lineHeight: 20, fontWeight: '800', letterSpacing: -0.3 },
   savePlus:       { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
   plusHorizontal: { width: 16, height: 2, borderRadius: 1, backgroundColor: '#ffffff' },
   plusVertical:   { position: 'absolute', width: 2, height: 16, borderRadius: 1, backgroundColor: '#ffffff' },
-
-  savedHeader:   { paddingHorizontal: spacing.page, marginTop: spacing.group, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  savedTitle:    { color: '#111827', fontSize: 19, lineHeight: 24, fontWeight: '900', letterSpacing: -0.6 },
-  viewAllButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  viewAllText:   { color: '#65738a', fontSize: 14, fontWeight: '600', letterSpacing: -0.3 },
-  viewAllChevron:{ width: 8, height: 8, borderRightWidth: 2, borderTopWidth: 2, borderColor: '#8f9caf', transform: [{ rotate: '45deg' }] },
-
-  savedRail:    { paddingHorizontal: spacing.page, gap: 12, paddingBottom: 2 },
-  savedCard:      { width: 200, minHeight: 74, borderRadius: 16, paddingLeft: 16, paddingRight: 10, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)' },
-  savedCardPinned:{ borderColor: 'rgba(57,118,206,0.28)', backgroundColor: 'rgba(239,246,255,0.95)' },
-  savedCardActive:{ borderColor: 'rgba(57,118,206,0.42)', backgroundColor: 'rgba(225,237,255,0.95)' },
-  savedCardRight: { flexDirection: 'column', alignItems: 'center', gap: 6 },
-  timetableIndicator:      { width: 8, height: 8, borderRadius: 4, backgroundColor: '#dce4f0' },
-  timetableIndicatorActive:{ backgroundColor: '#3976ce' },
-  savedBookmark:{ width: 17, height: 24, borderRadius: 3, overflow: 'hidden' },
-  savedBookmarkCut:{ position: 'absolute', left: 4, right: 4, bottom: -4, height: 8, backgroundColor: 'rgba(255,255,255,0.88)', transform: [{ rotate: '45deg' }] },
-  savedCopy:    { flex: 1, gap: 4 },
-  savedCourseName:{ color: '#111827', fontSize: 14, lineHeight: 18, fontWeight: '900', letterSpacing: -0.35 },
-  savedCourseMeta:{ color: '#65738a', fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: -0.25 },
-  pinButton:    { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' },
-  pinButtonActive:{ backgroundColor: 'rgba(57,118,206,0.14)' },
-  pinDot:       { width: 10, height: 10, borderRadius: 5, backgroundColor: '#c8d2e0' },
-  pinDotActive: { backgroundColor: '#3976ce' },
 
 });
