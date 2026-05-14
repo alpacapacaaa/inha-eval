@@ -1,9 +1,11 @@
 export const spacing = {
-  page: 24,
-  section: 32,
-  group: 20,
-  related: 12,
-  tight: 8,
-  touchGap: 12,
+  page: 20,
+  section: 24,
+  group: 16,
+  related: 10,
+  tight: 6,
+  touchGap: 10,
+  card: 16,
+  radius: 12,
 } as const;
 

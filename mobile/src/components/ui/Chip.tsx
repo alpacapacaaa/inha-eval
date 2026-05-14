@@ -39,8 +39,8 @@ export function Chip({
         styles.chip,
         compact ? styles.chipCompact : null,
         {
-          backgroundColor: active ? color : 'rgba(255,255,255,0.58)',
-          borderColor: active ? color : 'rgba(255,255,255,0.78)',
+          backgroundColor: active ? color : '#ffffff',
+          borderColor: active ? color : '#E8EDF2',
         },
         style,
       ]}
@@ -55,8 +55,8 @@ export function Chip({
 
 const styles = StyleSheet.create({
   chip: {
-    minHeight: 36,
-    borderRadius: 999,
+    minHeight: 34,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   textCompact: {

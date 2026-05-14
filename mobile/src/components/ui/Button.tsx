@@ -49,13 +49,13 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 54,
-    borderRadius: 999,
+    minHeight: 48,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   compact: {
     minHeight: 40,
@@ -63,38 +63,36 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   primary: {
-    backgroundColor: 'rgba(18,24,38,0.90)',
-    borderColor: 'rgba(255,255,255,0.24)',
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   secondary: {
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderColor: 'rgba(255,255,255,0.78)',
+    backgroundColor: colors.fill,
+    borderColor: colors.fill,
   },
   ghost: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
-    borderColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: '#ffffff',
+    borderColor: colors.line,
   },
   danger: {
     backgroundColor: 'rgba(216,79,65,0.92)',
     borderColor: 'rgba(255,255,255,0.24)',
   },
   disabled: {
-    opacity: 0.42,
+    backgroundColor: '#C8D2E1',
+    borderColor: '#C8D2E1',
+    opacity: 1,
   },
   text: {
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   primaryText: {
     color: '#ffffff',
   },
   secondaryText: {
-    color: colors.text,
+    color: colors.textMuted,
   },
   ghostText: {
     color: colors.primary,
