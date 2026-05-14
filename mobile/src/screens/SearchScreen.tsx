@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
@@ -164,7 +165,7 @@ export function SearchScreen({ navigation, route }: Props) {
       return true;
     });
 
-    return sortCourses(filtered, sortBy);
+    return sortCourses(dedupeCoursesByNameAndProfessor(filtered), sortBy);
   }, [
     category,
     courses,
@@ -186,7 +187,6 @@ export function SearchScreen({ navigation, route }: Props) {
     () => filteredCourses.slice(0, visibleCourseCount),
     [filteredCourses, visibleCourseCount],
   );
-
 
   const handleLoadMore = () => {
     if (isLoading || errorMessage || visibleCourseCount >= filteredCourses.length) {
@@ -235,29 +235,31 @@ export function SearchScreen({ navigation, route }: Props) {
         ListHeaderComponent={
           <View style={styles.listHeader}>
             <View style={styles.exploreHeader}>
-              <Text style={styles.exploreTitle}>강의를 탐색해보세요</Text>
-              <Text style={styles.exploreMeta}>원하는 강의를 검색하고 필터로 찾아보세요.</Text>
+              <Text style={styles.exploreTitle}>강의 랭킹</Text>
+              <Text style={styles.exploreMeta}>전공과 교양을 나눠서 빠르게 찾아보세요.</Text>
             </View>
 
             <SearchField
               placeholder="강의명, 교수명, 학과로 검색"
               value={query}
               onChangeText={setQuery}
-              rightAccessory={<FunnelIcon />}
+              rightAccessory={<Ionicons name="filter-outline" size={18} color="#111318" />}
               onRightAccessoryPress={() => setActivePanel(getPanelForCategory(category))}
             />
 
-            <View style={styles.categoryGrid}>
+            <View style={styles.categorySegment}>
               {categoryTabs.map((tab) => {
                 const active = category === tab.key;
                 return (
-                  <UiChip
+                  <PressableScale
                     key={tab.key}
-                    label={tab.label}
-                    active={active}
-                    tone={tab.tone}
+                    style={[styles.categorySegmentButton, active ? styles.categorySegmentButtonActive : null]}
                     onPress={() => setCategory(tab.key)}
-                  />
+                  >
+                    <Text style={[styles.categorySegmentText, active ? styles.categorySegmentTextActive : null]}>
+                      {tab.label}
+                    </Text>
+                  </PressableScale>
                 );
               })}
             </View>
@@ -308,7 +310,7 @@ export function SearchScreen({ navigation, route }: Props) {
         ListFooterComponent={
           !isLoading && !errorMessage && visibleCourseCount < filteredCourses.length ? (
             <View style={styles.loadMoreHint}>
-              <Text style={styles.loadMoreHintText}>아래로 더 내리면 다음 큐레이션을 이어서 보여드릴게요</Text>
+              <Text style={styles.loadMoreHintText}>아래로 더 내리면 더 많은 강의를 보여드릴게요</Text>
             </View>
           ) : null
         }
@@ -351,16 +353,6 @@ export function SearchScreen({ navigation, route }: Props) {
   );
 }
 
-function FunnelIcon() {
-  return (
-    <View style={styles.funnelWrap}>
-      <View style={[styles.funnelLine, { width: 18 }]} />
-      <View style={[styles.funnelLine, { width: 12 }]} />
-      <View style={[styles.funnelLine, { width: 6 }]} />
-    </View>
-  );
-}
-
 function SortSheet({
   visible,
   sortBy,
@@ -376,17 +368,16 @@ function SortSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.sortOverlay, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.sortOverlay}>
         <Pressable style={styles.sortScrim} onPress={onClose} />
 
-        {/* 옵션 카드 */}
-        <View style={styles.sortCard}>
+        <View style={[styles.sortCard, { paddingBottom: Math.max(insets.bottom, 18) }]}>
+          <View style={styles.sortHandle} />
           <View style={styles.sortCardHeader}>
-            <Text style={styles.sortCardTitle}>정렬 기준</Text>
+            <Text style={styles.sortCardTitle}>정렬 방식</Text>
           </View>
           {sortOptions.map((option, index) => {
             const isActive = sortBy === option.key;
-            const isLast = index === sortOptions.length - 1;
             return (
               <View key={option.key}>
                 {index > 0 ? <View style={styles.sortDivider} /> : null}
@@ -394,23 +385,11 @@ function SortSheet({
                   <Text style={[styles.sortRowText, isActive && styles.sortRowTextActive]}>
                     {option.label}
                   </Text>
-                  {isActive ? (
-                    <View style={styles.sortCheckCircle}>
-                      <View style={styles.sortCheckInner} />
-                    </View>
-                  ) : (
-                    <View style={styles.sortCheckEmpty} />
-                  )}
                 </PressableScale>
               </View>
             );
           })}
         </View>
-
-        {/* 취소 카드 */}
-        <PressableScale style={styles.sortCancelCard} onPress={onClose}>
-          <Text style={styles.sortCancelText}>취소</Text>
-        </PressableScale>
       </View>
     </Modal>
   );
@@ -663,7 +642,7 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
 function Chip({
   label,
   active,
-  color = '#121826',
+  color = '#111318',
   onPress,
 }: {
   label: string;
@@ -683,7 +662,7 @@ function getChipTone(color: string): 'dark' | 'green' | 'red' | 'blue' {
   if (color === '#d84f41') {
     return 'red';
   }
-  if (color === '#16499a') {
+  if (color === '#23A9FF') {
     return 'blue';
   }
   return 'dark';
@@ -718,18 +697,10 @@ function normalizeArea(course: Course) {
 }
 
 function matchesGeneralArea(course: Course, selectedArea: string) {
-  const haystack = normalizeFilterText(`${course.category} ${course.department} ${course.type}`);
-  const selected = normalizeFilterText(selectedArea);
-
-  if (selected === normalizeFilterText('핵심교양')) {
-    return haystack.includes(normalizeFilterText('핵심교양'));
-  }
-
-  if (selected === normalizeFilterText('일반교양')) {
-    return haystack.includes(normalizeFilterText('일반교양'));
-  }
-
-  return haystack.includes(selected) || selected.includes(haystack);
+  const courseArea = course.generalArea ?? '';
+  if (selectedArea === '핵심교양') return courseArea.startsWith('핵심교양');
+  if (selectedArea === '일반교양') return courseArea.startsWith('일반교양');
+  return courseArea === selectedArea;
 }
 
 function normalizeFilterText(value: string) {
@@ -745,7 +716,8 @@ function getMajorType(course: Course) {
 }
 
 function isPfCourse(course: Course) {
-  return /p\s*\/?\s*f|pass|패스|pf/i.test(`${course.grading} ${course.type} ${course.category}`);
+  const target = course.evaluationType ?? `${course.grading} ${course.type} ${course.category}`;
+  return /p\s*\/?\s*f|pass|패스|pf/i.test(target);
 }
 
 function sortCourses(courses: Course[], sortBy: SortOption) {
@@ -762,21 +734,30 @@ function sortCourses(courses: Course[], sortBy: SortOption) {
   }
 }
 
-function getSortLabel(sortBy: SortOption) {
-  return sortOptions.find((option) => option.key === sortBy)?.label.replace(' 높은순', '순') ?? '정렬';
+function dedupeCoursesByNameAndProfessor(courses: Course[]) {
+  const byCourseIdentity = new Map<string, Course>();
+
+  courses.forEach((course) => {
+    const key = getCourseIdentityKey(course);
+
+    if (!byCourseIdentity.has(key)) {
+      byCourseIdentity.set(key, course);
+    }
+  });
+
+  return Array.from(byCourseIdentity.values());
 }
 
-function getCategoryLabel(category: CategoryFilter) {
-  switch (category) {
-    case 'general':
-      return '교양 큐레이션';
-    case 'myMajor':
-      return '자기전공 큐레이션';
-    case 'otherMajor':
-      return '타과전공 큐레이션';
-    default:
-      return '전체 큐레이션';
-  }
+function getCourseIdentityKey(course: Course) {
+  return `${normalizeCourseIdentity(course.name)}::${normalizeCourseIdentity(course.professor)}`;
+}
+
+function normalizeCourseIdentity(value: string) {
+  return value.replace(/교수님?|강사님?/g, '').replace(/\s+/g, '').toLowerCase();
+}
+
+function getSortLabel(sortBy: SortOption) {
+  return sortOptions.find((option) => option.key === sortBy)?.label.replace(' 높은순', '순') ?? '정렬';
 }
 
 function getPanelTitle(panel: Exclude<PanelType, null>) {
@@ -903,40 +884,41 @@ function getCompactGeneralAreaLabel(area: string) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F2F5F8',
   },
   content: {
     paddingBottom: 112,
-    gap: 14,
+    gap: 12,
+    backgroundColor: '#F2F5F8',
   },
   listHeader: {
-    gap: 18,
+    gap: 12,
   },
   exploreHeader: {
     paddingHorizontal: spacing.page,
-    gap: 9,
+    gap: 5,
     paddingTop: 6,
-    paddingBottom: 8,
+    paddingBottom: 0,
   },
   exploreTitle: {
-    color: '#121826',
-    fontSize: 28,
-    lineHeight: 35,
-    fontWeight: '900',
-    letterSpacing: -1,
+    color: colors.text,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   exploreMeta: {
-    color: '#7a8495',
-    fontSize: 15,
-    lineHeight: 21,
+    color: colors.textTertiary,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '500',
-    letterSpacing: -0.35,
+    letterSpacing: -0.2,
   },
   searchDock: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
-    paddingHorizontal: spacing.page,
+    paddingHorizontal: 18,
   },
   searchBar: {
     flex: 1,
@@ -944,48 +926,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)',
-    paddingHorizontal: 15,
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    paddingHorizontal: 13,
   },
   searchIcon: {
     width: 16,
     height: 16,
     borderRadius: 999,
     borderWidth: 2,
-    borderColor: '#121826',
+    borderColor: '#111318',
   },
   searchInput: {
     flex: 1,
     paddingVertical: 12,
-    color: '#121826',
+    color: '#111318',
     fontSize: 15,
     fontWeight: '700',
   },
   searchButton: {
     minHeight: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(18,24,38,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
-    shadowColor: '#121826',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
   },
   searchButtonText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   controlPressed: {
     opacity: 0.74,
@@ -995,46 +967,73 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-start',
     gap: 10,
-    paddingHorizontal: spacing.page,
+    paddingHorizontal: 18,
     paddingTop: 2,
   },
   categoryButton: {
     minWidth: 0,
-    borderRadius: 999,
+    borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: '#E5E8EF',
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   categoryButtonInactive: {
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderColor: 'rgba(255,255,255,0.78)',
+    backgroundColor: '#ffffff',
+    borderColor: '#E5E8EF',
   },
   categoryButtonText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  categorySegment: {
+    marginHorizontal: spacing.page,
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: colors.backgroundElevated,
+    padding: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  categorySegmentButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  categorySegmentButtonActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  categorySegmentText: {
+    color: colors.textTertiary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  categorySegmentTextActive: {
+    color: colors.text,
+    fontWeight: '800',
   },
   toolRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    paddingHorizontal: spacing.page,
+    paddingHorizontal: 18,
   },
   toolIconButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 9 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
   },
   activeFilterSlot: {
     flex: 1,
@@ -1048,10 +1047,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeFilterChip: {
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: 'rgba(22,73,154,0.18)',
+    borderColor: colors.primarySoft,
     paddingHorizontal: 12,
     paddingVertical: 7,
     flexDirection: 'row',
@@ -1067,63 +1066,71 @@ const styles = StyleSheet.create({
   activeFilterChipX: {
     color: colors.primary,
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '700',
     opacity: 0.7,
   },
   // sort sheet
   sortOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    paddingHorizontal: 8,
-    gap: 8,
+    paddingHorizontal: 0,
   },
   sortScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
   },
   sortCard: {
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+  },
+  sortHandle: {
+    alignSelf: 'center',
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#D0D0D0',
+    marginTop: 12,
+    marginBottom: 22,
   },
   sortCardHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.10)',
+    paddingHorizontal: 28,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F2F4',
   },
   sortCardTitle: {
-    color: '#8a8a8e',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    textAlign: 'center',
+    color: '#171A1F',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'left',
   },
   sortDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.10)',
-    marginHorizontal: 0,
+    height: 1,
+    backgroundColor: '#F1F2F4',
+    marginHorizontal: 28,
   },
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 28,
+    minHeight: 56,
   },
   sortRowText: {
-    color: '#1c1c1e',
-    fontSize: 18,
+    color: '#272A30',
+    fontSize: 15,
+    lineHeight: 21,
     fontWeight: '500',
-    letterSpacing: -0.4,
+    letterSpacing: 0,
+    textAlign: 'left',
   },
   sortRowTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
+    color: '#171A1F',
+    fontWeight: '800',
   },
   sortCheckEmpty: {
     width: 22,
@@ -1147,14 +1154,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   sortCancelCard: {
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
     paddingVertical: 18,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
   },
   sortCancelText: {
     color: '#1c1c1e',
@@ -1162,28 +1165,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.4,
   },
-  funnelWrap: {
-    width: 22,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  funnelLine: {
-    height: 1.8,
-    borderRadius: 999,
-    backgroundColor: '#121826',
-  },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     gap: spacing.related,
     paddingHorizontal: spacing.page,
-    paddingTop: 16,
+    paddingTop: 4,
   },
   summaryText: {
     flex: 1,
-    color: '#121826',
+    color: colors.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '700',
@@ -1195,7 +1187,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   summaryHint: {
-    color: '#65738a',
+    color: '#5E6E85',
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
@@ -1216,20 +1208,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.page,
   },
   loadMoreHint: {
-    marginHorizontal: spacing.page,
+    marginHorizontal: 18,
     marginTop: -spacing.tight,
     marginBottom: spacing.group,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 10,
     alignItems: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
   },
   loadMoreHintText: {
     color: '#7b8492',
@@ -1245,24 +1232,19 @@ const styles = StyleSheet.create({
   },
   sheetScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(18,24,38,0.30)',
+    backgroundColor: 'rgba(18,24,38,0.24)',
   },
   sheet: {
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: '#ffffff',
+    borderWidth: 0,
     paddingTop: 10,
     paddingBottom: 0,
     gap: 0,
     minHeight: 640,
     maxHeight: '93%',
     overflow: 'hidden',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: -16 },
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
   },
   sheetHandle: {
     alignSelf: 'center',
@@ -1280,37 +1262,36 @@ const styles = StyleSheet.create({
     paddingBottom: 13,
   },
   sheetTitle: {
-    color: '#121826',
-    fontSize: 27,
-    fontWeight: '900',
-    letterSpacing: -1.2,
+    color: '#111318',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   sheetCloseButton: {
     width: 44,
     height: 44,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.56)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.80)',
+    borderRadius: 8,
+    backgroundColor: '#F4F7FA',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sheetCloseText: {
-    color: '#121826',
+    color: '#111318',
     fontSize: 31,
     lineHeight: 34,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   selectedFilterBar: {
     minHeight: 46,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.46)',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: spacing.page,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: '#EEF1F4',
   },
   selectedFilterText: {
     flex: 1,
@@ -1335,9 +1316,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   filterGroupTitle: {
-    color: '#121826',
+    color: '#111318',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.45,
   },
   filterDivider: {
@@ -1356,16 +1337,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    borderColor: '#E5E8EF',
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
   filterCheckItemActive: {
-    backgroundColor: 'rgba(238,244,255,0.82)',
-    borderColor: 'rgba(22,73,154,0.24)',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoft,
   },
   filterCheckItemMultiline: {
     minHeight: 54,
@@ -1383,14 +1364,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkBoxActive: {
-    borderColor: '#121826',
-    backgroundColor: '#121826',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
   checkMark: {
     color: '#ffffff',
     fontSize: 12,
     lineHeight: 14,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   filterCheckText: {
     flex: 1,
@@ -1405,24 +1386,23 @@ const styles = StyleSheet.create({
     letterSpacing: -0.45,
   },
   filterCheckTextActive: {
-    color: '#121826',
-    fontWeight: '900',
+    color: '#111318',
+    fontWeight: '700',
   },
   sheetFooter: {
     borderTopWidth: 1,
     borderColor: 'rgba(255,255,255,0.72)',
-    paddingHorizontal: spacing.page,
+    paddingHorizontal: 18,
     paddingTop: 12,
     paddingBottom: spacing.related,
     gap: 7,
-    backgroundColor: 'rgba(255,255,255,0.64)',
+    backgroundColor: '#FFFFFF',
   },
   sheetApplyButton: {
     minHeight: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17,24,39,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1437,7 +1417,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   sheetResetLineText: {
-    color: '#121826',
+    color: '#111318',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: -0.3,
@@ -1448,9 +1428,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.page,
   },
   filterSectionTitle: {
-    color: '#121826',
+    color: '#111318',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   chipWrap: {
     flexDirection: 'row',
@@ -1458,22 +1438,21 @@ const styles = StyleSheet.create({
     gap: spacing.tight,
   },
   chip: {
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   chipText: {
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   stateBlock: {
     minHeight: 160,
-    marginHorizontal: spacing.page,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    marginHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
     paddingHorizontal: 20,
     paddingVertical: 22,
     alignItems: 'center',
@@ -1495,11 +1474,11 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   skeletonBlock: {
-    marginHorizontal: spacing.page,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    marginHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    borderColor: '#E5E8EF',
     padding: 16,
     gap: 14,
   },
@@ -1516,10 +1495,9 @@ const styles = StyleSheet.create({
   skeletonCard: {
     flex: 1,
     height: 170,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
   },
   skeletonText: {
     color: '#7b8492',
