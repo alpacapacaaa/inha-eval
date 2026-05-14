@@ -25,6 +25,8 @@ public class ReviewResponse {
     private String content;
     private int likes;
     private LocalDateTime createdAt;
+    // 모바일 앱의 좋아요 버튼 상태(활성/비활성)를 서버에서 내려주기 위해 추가.
+    // 클라이언트가 별도 API를 호출하지 않아도 리뷰 목록 응답만으로 좋아요 여부를 알 수 있다.
     private boolean likedByMe;
 
     @JsonProperty("isAnonymous")    // review.isAnonymous가 항상 undefined 상태를 방지
@@ -60,10 +62,12 @@ public class ReviewResponse {
     private Integer pastExamScore;
 
     // Review 엔티티 → ReviewResponse 변환 메서드
+    // 기존 from(review) 시그니처를 유지해서 마이페이지 등 뷰어 정보가 없는 곳에서 깨지지 않도록 오버로드.
     public static ReviewResponse from(Review review) {
         return from(review, false);
     }
 
+    // viewerEmail이 있는 강의 상세 조회용. likedByMe를 직접 주입받아 DB 조회 결과를 그대로 반영.
     public static ReviewResponse from(Review review, boolean likedByMe) {
         return ReviewResponse.builder()
                 .id(review.getId())
