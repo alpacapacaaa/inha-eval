@@ -3,6 +3,8 @@ package com.inhaeval.backend.service;
 import com.inhaeval.backend.exception.CustomException;
 import net.nurigo.sdk.message.model.Message;
 import net.nurigo.sdk.NurigoApp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -10,6 +12,8 @@ import net.nurigo.sdk.message.service.DefaultMessageService;
 
 @Service
 public class SmsService {
+
+    private static final Logger log = LoggerFactory.getLogger(SmsService.class);
 
     private final DefaultMessageService messageService;
 
@@ -32,8 +36,7 @@ public class SmsService {
         try {
             messageService.sendOne(new net.nurigo.sdk.message.request.SingleMessageSendingRequest(message));
         } catch (Exception e) {
-            System.out.println("SMS 발송 실패 원인: " + e.getMessage());
-            e.printStackTrace();
+            log.error("SMS 발송 실패: {}", e.getMessage(), e);
             throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR, "문자 발송에 실패했습니다.");
         }
     }
