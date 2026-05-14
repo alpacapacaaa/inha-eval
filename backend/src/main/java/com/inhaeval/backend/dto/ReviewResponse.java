@@ -25,6 +25,7 @@ public class ReviewResponse {
     private String content;
     private int likes;
     private LocalDateTime createdAt;
+    private boolean likedByMe;
 
     @JsonProperty("isAnonymous")    // review.isAnonymous가 항상 undefined 상태를 방지
     private boolean isAnonymous;
@@ -60,6 +61,10 @@ public class ReviewResponse {
 
     // Review 엔티티 → ReviewResponse 변환 메서드
     public static ReviewResponse from(Review review) {
+        return from(review, false);
+    }
+
+    public static ReviewResponse from(Review review, boolean likedByMe) {
         return ReviewResponse.builder()
                 .id(review.getId())
                 .courseId(review.getCourse().getId())
@@ -74,6 +79,7 @@ public class ReviewResponse {
                 .content(review.getContent())
                 .likes(review.getLikesCount())
                 .createdAt(review.getCreatedAt())
+                .likedByMe(likedByMe)
                 .isAnonymous(review.isAnonymous())
                 .examTypes(review.getExamTypes())
                 .assignmentType(review.getAssignmentType())

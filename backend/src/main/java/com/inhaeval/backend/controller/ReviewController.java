@@ -32,8 +32,9 @@ public class ReviewController {
     @GetMapping("/course/{courseId}")
     public ResponseEntity<List<ReviewResponse>> getReviewsByCourse(
             @PathVariable Long courseId,
-            @RequestParam(defaultValue = "latest") String sort) {
-        return ResponseEntity.ok(reviewService.getReviewsByCourseId(courseId, sort));
+            @RequestParam(defaultValue = "latest") String sort,
+            Authentication authentication) {
+        return ResponseEntity.ok(reviewService.getReviewsByCourseId(courseId, sort, resolveAuthenticatedEmail(authentication)));
     }
 
     // 3. 내가 쓴 리뷰 목록 조회 (마이페이지, 로그인 필요)
@@ -61,5 +62,13 @@ public class ReviewController {
         String email = authentication.getName();
         reviewService.toggleLike(reviewId, email);
         return ResponseEntity.ok().build();
+    }
+
+    private String resolveAuthenticatedEmail(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || "anonymousUser".equals(authentication.getName())) {
+            return null;
+        }
+
+        return authentication.getName();
     }
 }

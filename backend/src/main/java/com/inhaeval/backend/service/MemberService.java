@@ -114,6 +114,7 @@ public class MemberService {
         return SignupResponse.builder()
                 .accessToken(jwtUtil.generateToken(member.getEmail()))
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
 
@@ -151,6 +152,7 @@ public class MemberService {
                 .accessToken(accessToken)
                 .refreshToken(refreshTokenValue)
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
     }
@@ -187,6 +189,7 @@ public class MemberService {
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshToken)
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
     }
