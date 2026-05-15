@@ -278,7 +278,7 @@ export function LoginScreen({ navigation }: Props) {
           <View style={styles.coveringTopBar}>
             <View style={styles.coveringBackGhost} />
             <Text style={styles.coveringTopTitle}>인하평 시작하기</Text>
-            <PressableScale style={styles.coveringHelpButton}>
+            <PressableScale style={styles.coveringHelpButton} onPress={() => navigation.navigate({ name: 'Inquiry' })}>
               <Text style={styles.coveringHelpText}>문의하기</Text>
             </PressableScale>
           </View>
@@ -382,7 +382,7 @@ export function LoginScreen({ navigation }: Props) {
             <View style={styles.chevron} />
           </PressableScale>
           <Text style={styles.stepTopTitle}>{isSignupStep ? '회원가입' : isLoginStep ? '로그인' : '계정 찾기'}</Text>
-          <PressableScale style={styles.stepHelpButton}>
+          <PressableScale style={styles.stepHelpButton} onPress={() => navigation.navigate({ name: 'Inquiry' })}>
             <Text style={styles.stepHelpText}>문의하기</Text>
           </PressableScale>
         </View>

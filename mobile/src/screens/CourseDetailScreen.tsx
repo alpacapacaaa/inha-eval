@@ -67,14 +67,9 @@ export function CourseDetailScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     setVisibleCount(8);
-    loadCourseDetail('latest');
     setSortBy('latest');
+    loadCourseDetail('latest');
   }, [route.courseId]);
-
-  useEffect(() => {
-    setVisibleCount(8);
-    loadCourseDetail(sortBy);
-  }, [sortBy]);
 
   const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
   const hasMore = visibleCount < reviews.length;
@@ -169,13 +164,13 @@ export function CourseDetailScreen({ navigation, route }: Props) {
         <View style={styles.sortRow}>
           <PressableScale
             style={[styles.sortChip, sortBy === 'latest' ? styles.sortChipActive : null]}
-            onPress={() => setSortBy('latest')}
+            onPress={() => { if (sortBy !== 'latest') { setSortBy('latest'); setVisibleCount(8); loadCourseDetail('latest'); } }}
           >
             <Text style={[styles.sortChipText, sortBy === 'latest' ? styles.sortChipTextActive : null]}>최신순</Text>
           </PressableScale>
           <PressableScale
             style={[styles.sortChip, sortBy === 'rating' ? styles.sortChipActive : null]}
-            onPress={() => setSortBy('rating')}
+            onPress={() => { if (sortBy !== 'rating') { setSortBy('rating'); setVisibleCount(8); loadCourseDetail('rating'); } }}
           >
             <Text style={[styles.sortChipText, sortBy === 'rating' ? styles.sortChipTextActive : null]}>평점순</Text>
           </PressableScale>

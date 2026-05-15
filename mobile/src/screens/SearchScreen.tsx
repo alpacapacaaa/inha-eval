@@ -46,10 +46,29 @@ const sortOptions: Array<{ key: SortOption; label: string }> = [
 const creditOptions = [1, 2, 3, 4] as const;
 const COURSE_PAGE_SIZE = 10;
 
+const savedFilters: {
+  category: CategoryFilter;
+  sortBy: SortOption;
+  majorCredit: number | 'all';
+  majorType: 'all' | 'required' | 'elective';
+  majorPf: 'all' | 'pf';
+  generalArea: string;
+  generalCredit: number | 'all';
+  generalPf: 'all' | 'pf';
+} = {
+  category: 'all',
+  sortBy: 'rating',
+  majorCredit: 'all',
+  majorType: 'all',
+  majorPf: 'all',
+  generalArea: 'all',
+  generalCredit: 'all',
+  generalPf: 'all',
+};
+
 const coreGeneralAreaOptions = [
   '핵심교양',
   '핵심교양-1.인간, 가치, 공존',
-  '핵심교양-1.인간, 가치, 공존(공학윤리와 토론)',
   '핵심교양-2.역사, 사상, 문화',
   '핵심교양-3.문학, 예술, 상징',
   '핵심교양-4.사회, 제도, 세계',
@@ -76,16 +95,28 @@ export function SearchScreen({ navigation, route }: Props) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [category, setCategory] = useState<CategoryFilter>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('rating');
+  const [category, setCategory] = useState<CategoryFilter>(() => savedFilters.category);
+  const [sortBy, setSortBy] = useState<SortOption>(() => savedFilters.sortBy);
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const [majorCredit, setMajorCredit] = useState<number | 'all'>('all');
-  const [majorType, setMajorType] = useState<'all' | 'required' | 'elective'>('all');
-  const [generalArea, setGeneralArea] = useState('all');
-  const [generalCredit, setGeneralCredit] = useState<number | 'all'>('all');
-  const [generalPf, setGeneralPf] = useState<'all' | 'pf' | 'grade'>('all');
+  const [majorCredit, setMajorCredit] = useState<number | 'all'>(() => savedFilters.majorCredit);
+  const [majorType, setMajorType] = useState<'all' | 'required' | 'elective'>(() => savedFilters.majorType);
+  const [majorPf, setMajorPf] = useState<'all' | 'pf'>(() => savedFilters.majorPf);
+  const [generalArea, setGeneralArea] = useState(() => savedFilters.generalArea);
+  const [generalCredit, setGeneralCredit] = useState<number | 'all'>(() => savedFilters.generalCredit);
+  const [generalPf, setGeneralPf] = useState<'all' | 'pf'>(() => savedFilters.generalPf);
   const [visibleCourseCount, setVisibleCourseCount] = useState(COURSE_PAGE_SIZE);
+
+  useEffect(() => {
+    savedFilters.category = category;
+    savedFilters.sortBy = sortBy;
+    savedFilters.majorCredit = majorCredit;
+    savedFilters.majorType = majorType;
+    savedFilters.majorPf = majorPf;
+    savedFilters.generalArea = generalArea;
+    savedFilters.generalCredit = generalCredit;
+    savedFilters.generalPf = generalPf;
+  }, [category, sortBy, majorCredit, majorType, majorPf, generalArea, generalCredit, generalPf]);
 
   const loadCourses = async () => {
     const requestId = ++requestIdRef.current;
@@ -128,6 +159,8 @@ export function SearchScreen({ navigation, route }: Props) {
 
   const filteredCourses = useMemo(() => {
     const lowerQuery = trimmedQuery.toLowerCase();
+    const hasMajorFilter = majorCredit !== 'all' || majorType !== 'all' || majorPf !== 'all';
+    const hasGeneralFilter = generalArea !== 'all' || generalCredit !== 'all' || generalPf !== 'all';
 
     const filtered = courses.filter((course) => {
       if (trimmedQuery) {
@@ -141,6 +174,12 @@ export function SearchScreen({ navigation, route }: Props) {
       const scope = getCourseScope(course, user?.department);
       if (category !== 'all' && scope !== category) {
         return false;
+      }
+
+      // 전체 탭에서 한쪽 필터만 활성화된 경우, 해당 범주만 표시
+      if (category === 'all') {
+        if (hasMajorFilter && !hasGeneralFilter && scope === 'general') return false;
+        if (hasGeneralFilter && !hasMajorFilter && scope !== 'general') return false;
       }
 
       if (scope === 'general') {
@@ -162,22 +201,14 @@ export function SearchScreen({ navigation, route }: Props) {
       if (majorType !== 'all' && getMajorType(course) !== majorType) {
         return false;
       }
+      if (majorPf !== 'all' && isPfCourse(course) !== (majorPf === 'pf')) {
+        return false;
+      }
       return true;
     });
 
     return sortCourses(dedupeCoursesByNameAndProfessor(filtered), sortBy);
-  }, [
-    category,
-    courses,
-    generalArea,
-    generalCredit,
-    generalPf,
-    majorCredit,
-    majorType,
-    sortBy,
-    trimmedQuery,
-    user?.department,
-  ]);
+  }, [category, courses, generalArea, generalCredit, generalPf, majorCredit, majorPf, majorType, sortBy, trimmedQuery, user?.department]);
 
   useEffect(() => {
     setVisibleCourseCount(COURSE_PAGE_SIZE);
@@ -210,6 +241,9 @@ export function SearchScreen({ navigation, route }: Props) {
       if (majorType !== 'all') {
         items.push({ label: majorType === 'required' ? '전필' : '전선', onRemove: () => setMajorType('all') });
       }
+      if (majorPf !== 'all') {
+        items.push({ label: '전공 P/F', onRemove: () => setMajorPf('all') });
+      }
     }
     if (isGeneralScope) {
       if (generalArea !== 'all') {
@@ -219,11 +253,11 @@ export function SearchScreen({ navigation, route }: Props) {
         items.push({ label: `교양 ${generalCredit}학점`, onRemove: () => setGeneralCredit('all') });
       }
       if (generalPf !== 'all') {
-        items.push({ label: generalPf === 'pf' ? 'P/F' : '등급제', onRemove: () => setGeneralPf('all') });
+        items.push({ label: '교양 P/F', onRemove: () => setGeneralPf('all') });
       }
     }
     return items;
-  }, [category, generalArea, generalCredit, generalPf, majorCredit, majorType]);
+  }, [category, generalArea, generalCredit, generalPf, majorCredit, majorPf, majorType]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
@@ -333,6 +367,7 @@ export function SearchScreen({ navigation, route }: Props) {
           generalPf={generalPf}
           majorCredit={majorCredit}
           majorType={majorType}
+          majorPf={majorPf}
           resultCount={filteredCourses.length}
           onClose={() => setActivePanel(null)}
           onGeneralAreaChange={setGeneralArea}
@@ -340,6 +375,7 @@ export function SearchScreen({ navigation, route }: Props) {
           onGeneralPfChange={setGeneralPf}
           onMajorCreditChange={setMajorCredit}
           onMajorTypeChange={setMajorType}
+          onMajorPfChange={setMajorPf}
         />
       ) : null}
 
@@ -402,6 +438,7 @@ function FilterSheet({
   generalPf,
   majorCredit,
   majorType,
+  majorPf,
   resultCount,
   onClose,
   onGeneralAreaChange,
@@ -409,30 +446,32 @@ function FilterSheet({
   onGeneralPfChange,
   onMajorCreditChange,
   onMajorTypeChange,
+  onMajorPfChange,
 }: {
   activePanel: Exclude<PanelType, null>;
   generalArea: string;
   generalCredit: number | 'all';
-  generalPf: 'all' | 'pf' | 'grade';
+  generalPf: 'all' | 'pf';
   majorCredit: number | 'all';
   majorType: 'all' | 'required' | 'elective';
+  majorPf: 'all' | 'pf';
   resultCount: number;
   onClose: () => void;
   onGeneralAreaChange: (value: string) => void;
   onGeneralCreditChange: (value: number | 'all') => void;
-  onGeneralPfChange: (value: 'all' | 'pf' | 'grade') => void;
+  onGeneralPfChange: (value: 'all' | 'pf') => void;
   onMajorCreditChange: (value: number | 'all') => void;
   onMajorTypeChange: (value: 'all' | 'required' | 'elective') => void;
+  onMajorPfChange: (value: 'all' | 'pf') => void;
 }) {
-  const showMajorFilters = activePanel === 'all' || activePanel === 'major';
-  const showGeneralFilters = activePanel === 'all' || activePanel === 'general';
+  const [subTab, setSubTab] = useState<'major' | 'general'>('major');
 
-  const selectedSummary =
-    activePanel === 'all'
-      ? getAllSelectionSummary(majorCredit, majorType, generalArea, generalCredit, generalPf)
-      : activePanel === 'general'
-        ? getGeneralSelectionSummary(generalArea, generalCredit, generalPf)
-        : getMajorSelectionSummary(majorCredit, majorType);
+  const showMajorFilters = activePanel === 'major' || (activePanel === 'all' && subTab === 'major');
+  const showGeneralFilters = activePanel === 'general' || (activePanel === 'all' && subTab === 'general');
+
+  const selectedSummary = showMajorFilters
+    ? getMajorSelectionSummary(majorCredit, majorType, majorPf)
+    : getGeneralSelectionSummary(generalArea, generalCredit, generalPf);
 
   const resetFilters = () => {
     if (showGeneralFilters) {
@@ -440,12 +479,15 @@ function FilterSheet({
       onGeneralCreditChange('all');
       onGeneralPfChange('all');
     }
-
     if (showMajorFilters) {
       onMajorCreditChange('all');
       onMajorTypeChange('all');
+      onMajorPfChange('all');
     }
   };
+
+  const majorHasFilter = majorCredit !== 'all' || majorType !== 'all' || majorPf !== 'all';
+  const generalHasFilter = generalArea !== 'all' || generalCredit !== 'all' || generalPf !== 'all';
 
   return (
     <View style={styles.sheetOverlay}>
@@ -459,93 +501,113 @@ function FilterSheet({
           </PressableScale>
         </View>
 
-        <>
-          <>
-            <SelectedFilterBar summary={selectedSummary} onReset={resetFilters} />
-            <FilterBodyScroll>
-              {showMajorFilters ? (
-                <>
-                  <FilterGroupTitle>전공 학점</FilterGroupTitle>
-                  <FilterGrid>
-                    <FilterCheckItem label="전체 학점" active={majorCredit === 'all'} onPress={() => onMajorCreditChange('all')} />
-                    {creditOptions.map((credit) => (
-                      <FilterCheckItem
-                        key={`major-credit-${credit}`}
-                        label={`${credit}학점`}
-                        active={majorCredit === credit}
-                        onPress={() => onMajorCreditChange(credit)}
-                      />
-                    ))}
-                  </FilterGrid>
-                  <FilterDivider />
-                  <FilterGroupTitle>이수 구분</FilterGroupTitle>
-                  <FilterGrid>
-                    <FilterCheckItem label="전필·전선" active={majorType === 'all'} onPress={() => onMajorTypeChange('all')} />
-                    <FilterCheckItem label="전필" active={majorType === 'required'} onPress={() => onMajorTypeChange('required')} />
-                    <FilterCheckItem label="전선" active={majorType === 'elective'} onPress={() => onMajorTypeChange('elective')} />
-                  </FilterGrid>
-                </>
-              ) : null}
+        {activePanel === 'all' ? (
+          <View style={styles.subTabBar}>
+            <PressableScale
+              style={[styles.subTabButton, subTab === 'major' ? styles.subTabButtonActive : null]}
+              onPress={() => setSubTab('major')}
+            >
+              <Text style={[styles.subTabText, subTab === 'major' ? styles.subTabTextActive : null]}>
+                전공
+              </Text>
+              {majorHasFilter ? <View style={styles.subTabDot} /> : null}
+            </PressableScale>
+            <PressableScale
+              style={[styles.subTabButton, subTab === 'general' ? styles.subTabButtonActive : null]}
+              onPress={() => setSubTab('general')}
+            >
+              <Text style={[styles.subTabText, subTab === 'general' ? styles.subTabTextActive : null]}>
+                교양
+              </Text>
+              {generalHasFilter ? <View style={styles.subTabDot} /> : null}
+            </PressableScale>
+          </View>
+        ) : null}
 
-              {showMajorFilters && showGeneralFilters ? <FilterDivider /> : null}
+        <SelectedFilterBar summary={selectedSummary} onReset={resetFilters} />
+        <FilterBodyScroll>
+          {showMajorFilters ? (
+            <>
+              <FilterGroupTitle>전공 학점</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전체 학점" active={majorCredit === 'all'} onPress={() => onMajorCreditChange('all')} />
+                {creditOptions.map((credit) => (
+                  <FilterCheckItem
+                    key={`major-credit-${credit}`}
+                    label={`${credit}학점`}
+                    active={majorCredit === credit}
+                    onPress={() => onMajorCreditChange(credit)}
+                  />
+                ))}
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>이수 구분</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전필·전선" active={majorType === 'all'} onPress={() => onMajorTypeChange('all')} />
+                <FilterCheckItem label="전필" active={majorType === 'required'} onPress={() => onMajorTypeChange('required')} />
+                <FilterCheckItem label="전선" active={majorType === 'elective'} onPress={() => onMajorTypeChange('elective')} />
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>성적 방식</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전체" active={majorPf === 'all'} onPress={() => onMajorPfChange('all')} />
+                <FilterCheckItem label="P/F" active={majorPf === 'pf'} onPress={() => onMajorPfChange('pf')} />
+              </FilterGrid>
+            </>
+          ) : null}
 
-              {showGeneralFilters ? (
-                <>
-                  <FilterGroupTitle>교양 전체</FilterGroupTitle>
-                  <FilterGrid>
-                    <FilterCheckItem label="전체 영역" active={generalArea === 'all'} onPress={() => onGeneralAreaChange('all')} />
-                  </FilterGrid>
-                  <FilterDivider />
-                  <FilterGroupTitle>핵심교양</FilterGroupTitle>
-                  <FilterGrid>
-                    {coreGeneralAreaOptions.map((area) => (
-                      <FilterCheckItem
-                        key={`area-${area}`}
-                        label={area}
-                        multiline
-                        active={generalArea === area}
-                        onPress={() => onGeneralAreaChange(area)}
-                      />
-                    ))}
-                  </FilterGrid>
-                  <FilterDivider />
-                  <FilterGroupTitle>일반교양</FilterGroupTitle>
-                  <FilterGrid>
-                    {normalGeneralAreaOptions.map((area) => (
-                      <FilterCheckItem
-                        key={`area-${area}`}
-                        label={area}
-                        multiline
-                        active={generalArea === area}
-                        onPress={() => onGeneralAreaChange(area)}
-                      />
-                    ))}
-                  </FilterGrid>
-                  <FilterDivider />
-                  <FilterGroupTitle>교양 학점</FilterGroupTitle>
-                  <FilterGrid>
-                    <FilterCheckItem label="전체 학점" active={generalCredit === 'all'} onPress={() => onGeneralCreditChange('all')} />
-                    {creditOptions.map((credit) => (
-                      <FilterCheckItem
-                        key={`general-credit-${credit}`}
-                        label={`${credit}학점`}
-                        active={generalCredit === credit}
-                        onPress={() => onGeneralCreditChange(credit)}
-                      />
-                    ))}
-                  </FilterGrid>
-                  <FilterDivider />
-                  <FilterGroupTitle>성적 방식</FilterGroupTitle>
-                  <FilterGrid>
-                    <FilterCheckItem label="P/F 포함" active={generalPf === 'all'} onPress={() => onGeneralPfChange('all')} />
-                    <FilterCheckItem label="P/F" active={generalPf === 'pf'} onPress={() => onGeneralPfChange('pf')} />
-                    <FilterCheckItem label="등급제" active={generalPf === 'grade'} onPress={() => onGeneralPfChange('grade')} />
-                  </FilterGrid>
-                </>
-              ) : null}
-            </FilterBodyScroll>
-          </>
-        </>
+          {showGeneralFilters ? (
+            <>
+              <FilterGroupTitle>교양 전체</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전체 영역" active={generalArea === 'all'} onPress={() => onGeneralAreaChange('all')} />
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>핵심교양</FilterGroupTitle>
+              <FilterGrid>
+                {coreGeneralAreaOptions.map((area) => (
+                  <FilterCheckItem
+                    key={`area-${area}`}
+                    label={getCompactGeneralAreaLabel(area)}
+                    active={generalArea === area}
+                    onPress={() => onGeneralAreaChange(area)}
+                  />
+                ))}
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>일반교양</FilterGroupTitle>
+              <FilterGrid>
+                {normalGeneralAreaOptions.map((area) => (
+                  <FilterCheckItem
+                    key={`area-${area}`}
+                    label={getCompactGeneralAreaLabel(area)}
+                    active={generalArea === area}
+                    onPress={() => onGeneralAreaChange(area)}
+                  />
+                ))}
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>교양 학점</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전체 학점" active={generalCredit === 'all'} onPress={() => onGeneralCreditChange('all')} />
+                {creditOptions.map((credit) => (
+                  <FilterCheckItem
+                    key={`general-credit-${credit}`}
+                    label={`${credit}학점`}
+                    active={generalCredit === credit}
+                    onPress={() => onGeneralCreditChange(credit)}
+                  />
+                ))}
+              </FilterGrid>
+              <FilterDivider />
+              <FilterGroupTitle>성적 방식</FilterGroupTitle>
+              <FilterGrid>
+                <FilterCheckItem label="전체" active={generalPf === 'all'} onPress={() => onGeneralPfChange('all')} />
+                <FilterCheckItem label="P/F" active={generalPf === 'pf'} onPress={() => onGeneralPfChange('pf')} />
+              </FilterGrid>
+            </>
+          ) : null}
+        </FilterBodyScroll>
 
         <View style={styles.sheetFooter}>
           <PressableScale style={styles.sheetApplyButton} onPress={onClose}>
@@ -700,6 +762,9 @@ function matchesGeneralArea(course: Course, selectedArea: string) {
   const courseArea = course.generalArea ?? '';
   if (selectedArea === '핵심교양') return courseArea.startsWith('핵심교양');
   if (selectedArea === '일반교양') return courseArea.startsWith('일반교양');
+  if (selectedArea === '핵심교양-1.인간, 가치, 공존') {
+    return courseArea === selectedArea || courseArea === '핵심교양-1.인간, 가치, 공존(공학윤리와 토론)';
+  }
   return courseArea === selectedArea;
 }
 
@@ -821,39 +886,41 @@ function getActiveFilterChips({
       chips.push(`교양 ${generalCredit}학점`);
     }
     if (generalPf !== 'all') {
-      chips.push(generalPf === 'pf' ? 'P/F' : '등급제');
+      chips.push('P/F만');
     }
   }
 
   return chips;
 }
 
-function getMajorSelectionSummary(credit: number | 'all', type: 'all' | 'required' | 'elective') {
+function getMajorSelectionSummary(credit: number | 'all', type: 'all' | 'required' | 'elective', pf: 'all' | 'pf') {
   const selected = [
     credit === 'all' ? '전체 학점' : `${credit}학점`,
     type === 'all' ? '전필·전선' : type === 'required' ? '전필' : '전선',
-  ];
+    pf === 'all' ? '' : 'P/F',
+  ].filter(Boolean);
   return selected.join(' · ');
 }
 
 function getAllSelectionSummary(
   majorCredit: number | 'all',
   majorType: 'all' | 'required' | 'elective',
+  majorPf: 'all' | 'pf',
   generalArea: string,
   generalCredit: number | 'all',
-  generalPf: 'all' | 'pf' | 'grade',
+  generalPf: 'all' | 'pf',
 ) {
   return [
-    `전공 ${getMajorSelectionSummary(majorCredit, majorType)}`,
+    `전공 ${getMajorSelectionSummary(majorCredit, majorType, majorPf)}`,
     `교양 ${getGeneralSelectionSummary(generalArea, generalCredit, generalPf)}`,
   ].join(' / ');
 }
 
-function getGeneralSelectionSummary(area: string, credit: number | 'all', pf: 'all' | 'pf' | 'grade') {
+function getGeneralSelectionSummary(area: string, credit: number | 'all', pf: 'all' | 'pf') {
   const selected = [
     area === 'all' ? '전체 영역' : area,
     credit === 'all' ? '전체 학점' : `${credit}학점`,
-    pf === 'all' ? 'P/F 포함' : pf === 'pf' ? 'P/F' : '등급제',
+    pf === 'all' ? '전체' : 'P/F',
   ];
   return selected.join(' · ');
 }
@@ -1281,6 +1348,44 @@ const styles = StyleSheet.create({
     fontSize: 31,
     lineHeight: 34,
     fontWeight: '700',
+  },
+  subTabBar: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.page,
+    marginTop: 6,
+    marginBottom: 2,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: 10,
+    padding: 4,
+    gap: 4,
+  },
+  subTabButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+  subTabButtonActive: {
+    backgroundColor: '#ffffff',
+  },
+  subTabText: {
+    color: colors.textTertiary,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  subTabTextActive: {
+    color: colors.text,
+    fontWeight: '800',
+  },
+  subTabDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   selectedFilterBar: {
     minHeight: 46,

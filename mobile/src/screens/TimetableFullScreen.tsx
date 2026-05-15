@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,7 @@ import {
   PERIODS,
   TIMETABLE_BY_COURSE_ID,
   TIMETABLE_DAYS,
+  TimetableDay,
   TimetableSlot,
 } from '../lib/timetableData';
 import { AppNavigation } from '../navigation/AppNavigator';
@@ -28,6 +29,16 @@ interface Props {
 }
 
 type TimetableCourse = Course & { slots: TimetableSlot[] };
+
+type SelectedEntry = {
+  courseId: string;
+  courseName: string;
+  professor: string;
+  day: TimetableDay;
+  startPeriod: number;
+  endPeriod: number;
+  location: string;
+};
 
 const PERIOD_HEIGHT = 29;
 const BLOCK_COLORS = ['#E0EEFF', '#e2f4ea', '#efe4ff', '#fff0cf', '#EBF3FF', '#dff5f3'];
@@ -48,6 +59,7 @@ export function TimetableFullScreen({ navigation }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -154,6 +166,25 @@ export function TimetableFullScreen({ navigation }: Props) {
     setMessage(`${course.name}을 담은 강의에서 삭제했어요.`);
   }, [cartIds, selectedIds]);
 
+  const handleBlockPress = (entry: SelectedEntry) => {
+    setSelectedEntry(entry);
+  };
+
+  const handleDeleteFromTimetable = async () => {
+    if (!selectedEntry) return;
+    const nextIds = selectedIds.filter((id) => id !== selectedEntry.courseId);
+    setSelectedIds(nextIds);
+    await saveSelectedTimetableIds(nextIds);
+    setSelectedEntry(null);
+    setMessage(`${selectedEntry.courseName}을 시간표에서 뺐어요.`);
+  };
+
+  const handleViewReviews = () => {
+    if (!selectedEntry) return;
+    setSelectedEntry(null);
+    navigation.navigate({ name: 'CourseDetail', courseId: Number(selectedEntry.courseId) });
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
@@ -216,7 +247,7 @@ export function TimetableFullScreen({ navigation }: Props) {
                     {placedEntries
                       .filter((entry) => entry.day === day && entry.startPeriod <= lastVisiblePeriod)
                       .map((entry) => (
-                        <View
+                        <PressableScale
                           key={`${entry.courseId}-${day}-${entry.startPeriod}`}
                           style={[
                             styles.scheduleBlock,
@@ -229,6 +260,15 @@ export function TimetableFullScreen({ navigation }: Props) {
                               backgroundColor: entry.backgroundColor,
                             },
                           ]}
+                          onPress={() => handleBlockPress({
+                            courseId: entry.courseId,
+                            courseName: entry.courseName,
+                            professor: entry.professor,
+                            day: entry.day,
+                            startPeriod: entry.startPeriod,
+                            endPeriod: entry.endPeriod,
+                            location: entry.location,
+                          })}
                         >
                           <Text
                             style={[styles.blockTitle, { color: entry.textColor }]}
@@ -237,7 +277,7 @@ export function TimetableFullScreen({ navigation }: Props) {
                             {entry.courseName}
                           </Text>
                           <Text style={styles.blockMeta} numberOfLines={1}>{entry.location}</Text>
-                        </View>
+                        </PressableScale>
                       ))}
                   </View>
                 ))}
@@ -287,6 +327,37 @@ export function TimetableFullScreen({ navigation }: Props) {
           </>
         )}
       </ScrollView>
+
+      {selectedEntry ? (
+        <Modal transparent animationType="slide" onRequestClose={() => setSelectedEntry(null)}>
+          <Pressable style={styles.sheetOverlay} onPress={() => setSelectedEntry(null)} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetCourseName}>{selectedEntry.courseName}</Text>
+            <Text style={styles.sheetProfessor}>{selectedEntry.professor}</Text>
+            <View style={styles.sheetInfoList}>
+              <View style={styles.sheetInfoRow}>
+                <Text style={styles.sheetInfoLabel}>강의실</Text>
+                <Text style={styles.sheetInfoValue}>{selectedEntry.location || '미정'}</Text>
+              </View>
+              <View style={styles.sheetInfoRow}>
+                <Text style={styles.sheetInfoLabel}>시간</Text>
+                <Text style={styles.sheetInfoValue}>
+                  {selectedEntry.day}요일 {formatPeriodRange(selectedEntry.startPeriod, selectedEntry.endPeriod)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sheetActions}>
+              <PressableScale style={styles.sheetReviewButton} onPress={handleViewReviews}>
+                <Text style={styles.sheetReviewButtonText}>강의평 보기</Text>
+              </PressableScale>
+              <PressableScale style={styles.sheetDeleteButton} onPress={handleDeleteFromTimetable}>
+                <Text style={styles.sheetDeleteButtonText}>삭제</Text>
+              </PressableScale>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -581,4 +652,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  sheetOverlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet:                { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: spacing.page, paddingTop: 12 },
+  sheetHandle:          { width: 36, height: 4, borderRadius: 2, backgroundColor: '#D1D9E3', alignSelf: 'center', marginBottom: 20 },
+  sheetCourseName:      { color: colors.text, fontSize: 18, fontWeight: '800', letterSpacing: -0.4, lineHeight: 24 },
+  sheetProfessor:       { marginTop: 4, color: colors.textSecondary, fontSize: 14, fontWeight: '600', letterSpacing: -0.2 },
+  sheetInfoList:        { marginTop: 20, gap: 10 },
+  sheetInfoRow:         { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sheetInfoLabel:       { width: 44, color: colors.textMuted, fontSize: 13, fontWeight: '600', letterSpacing: -0.2 },
+  sheetInfoValue:       { flex: 1, color: colors.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  sheetActions:         { marginTop: 24, flexDirection: 'row', gap: 10 },
+  sheetReviewButton:    { flex: 1, minHeight: 50, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  sheetReviewButtonText:{ color: '#ffffff', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sheetDeleteButton:    { minHeight: 50, paddingHorizontal: 20, borderRadius: 12, backgroundColor: '#F4F7FB', alignItems: 'center', justifyContent: 'center' },
+  sheetDeleteButtonText:{ color: '#E0404A', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
 });
