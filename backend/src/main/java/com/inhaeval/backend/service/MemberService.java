@@ -207,7 +207,7 @@ public class MemberService {
     @Transactional
     public void resetPassword(PasswordResetRequest request) {
         if (!request.getNewPassword().equals(request.getNewPasswordConfirm())) {
-            throw new CustomException(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+            throw new CustomException(HttpStatus.BAD_REQUEST, "두 비밀번호가 일치하지 않습니다.");
         }
 
         PhoneVerification verification = phoneVerificationRepository.findTopByPhoneNumberAndIsUsedTrueOrderByIdDesc(request.getPhoneNumber())
