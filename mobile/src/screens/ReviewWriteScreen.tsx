@@ -1,23 +1,21 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
-  Easing,
   KeyboardAvoidingView,
-  LayoutAnimation,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { createReview, getMyReviews } from '../lib/api/reviews';
 import { AppNavigation } from '../navigation/AppNavigator';
+import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { Review } from '../types/models';
 
@@ -29,380 +27,510 @@ interface Props {
   };
 }
 
-type Level = 'easy' | 'medium' | 'hard';
-type CriterionKey = 'teaching' | 'difficulty' | 'workload' | 'attendance' | 'grading' | 'exam';
-type Stage = 'select' | 'rating' | CriterionKey | 'note' | 'preview';
+type CategoryKey =
+  | 'classMethod'
+  | 'workload'
+  | 'exam'
+  | 'attendance'
+  | 'atmosphere'
+  | 'target'
+  | 'examMethod'
+  | 'examInfo'
+  | 'assignment'
+  | 'prerequisite'
+  | 'depth'
+  | 'teamProject'
+  | 'practice'
+  | 'quiz'
+  | 'textbook';
+type StageKey = 'select' | 'evaluate' | 'note' | 'preview';
+type QuestionKey =
+  | 'examDifficultyHard'
+  | 'examMaterialEnough'
+  | 'examTimeShort'
+  | 'examGapLarge'
+  | 'lectureGood'
+  | 'lectureMaterialHelpful'
+  | 'recordingHelpful'
+  | 'gradingFair'
+  | 'gradingPlus'
+  | 'assignmentFrequent'
+  | 'assignmentHard'
+  | 'prerequisiteNeeded'
+  | 'prerequisiteImpact'
+  | 'depthIntro'
+  | 'depthTheory'
+  | 'depthBroad'
+  | 'depthAdvanced'
+  | 'examInfoEnough'
+  | 'examApplication'
+  | 'pastExamImpact'
+  | 'teamHigh'
+  | 'teamPresentation'
+  | 'teamReport'
+  | 'teamGradeImpact'
+  | 'teamMemberImpact'
+  | 'practiceHigh'
+  | 'practiceInClass'
+  | 'practiceGradeImpact'
+  | 'practicePreparationHard'
+  | 'quizHard'
+  | 'quizGradeImpact'
+  | 'textbookNeeded'
+  | 'textbookMaterialCentered';
+type ToggleKey = 'teamProject' | 'practice' | 'quiz';
 
 const theme = {
-  bg: '#f7f9fd',
-  surface: '#ffffff',
-  surfaceRaised: '#edf3fb',
-  line: 'rgba(22,73,154,0.12)',
-  gold: '#d7ad4d',
-  goldSoft: 'rgba(215,173,77,0.18)',
-  text: '#121826',
-  muted: '#65738a',
-  faint: '#9aa6b8',
-  blue: '#16499a',
+  bg: colors.background,
+  text: colors.text,
+  muted: colors.textMuted,
+  faint: '#AAB4C0',
+  blue: colors.primary,
+  blueSoft: colors.primarySoft,
+  sky: colors.primarySoft,
+  iconBg: colors.fill,
+  line: colors.cardBorder,
+  navy: colors.inkBlue,
   red: '#d84f41',
-  green: '#226d68',
-} as const;
+  green: '#2f946f',
+  orange: '#e6a640',
+  pink: '#db6195',
+  purple: '#9068db',
+};
 
-const criterionCatalog: Array<{
-  key: CriterionKey;
-  label: string;
-  shortLabel: string;
-  question: string;
+type IconName = keyof typeof Ionicons.glyphMap;
+
+const miniIconSpecs: Record<CategoryKey, {
+  icon: IconName;
+  badge: string;
+  accent: string;
+  sheet: string;
+}> = {
+  classMethod: { icon: 'book-outline', badge: 'PPT', accent: '#2EA7FF', sheet: '#EAF7FF' },
+  workload: { icon: 'star-outline', badge: '학점', accent: '#F1A72F', sheet: '#FFF7E4' },
+  exam: { icon: 'document-text-outline', badge: 'TEST', accent: '#6876E8', sheet: '#EEF0FF' },
+  attendance: { icon: 'calendar-outline', badge: '출석', accent: '#2E9F79', sheet: '#EAF8F2' },
+  atmosphere: { icon: 'chatbubble-ellipses-outline', badge: '톤', accent: '#52A7E8', sheet: '#EAF7FF' },
+  target: { icon: 'ribbon-outline', badge: '추천', accent: '#2FAF82', sheet: '#EAF8F2' },
+  examMethod: { icon: 'search-outline', badge: '유형', accent: '#4C86E8', sheet: '#EDF5FF' },
+  examInfo: { icon: 'reader-outline', badge: '범위', accent: '#4C86E8', sheet: '#EDF5FF' },
+  assignment: { icon: 'folder-open-outline', badge: '과제', accent: '#E8A23B', sheet: '#FFF5E6' },
+  prerequisite: { icon: 'library-outline', badge: '기초', accent: '#7A67D9', sheet: '#F2EEFF' },
+  depth: { icon: 'layers-outline', badge: 'LV', accent: '#7A67D9', sheet: '#F2EEFF' },
+  teamProject: { icon: 'people-outline', badge: 'TEAM', accent: '#3BAE95', sheet: '#EAF8F5' },
+  practice: { icon: 'terminal-outline', badge: 'LAB', accent: '#3BAE95', sheet: '#EAF8F5' },
+  quiz: { icon: 'help-circle-outline', badge: 'Q', accent: '#2EA7FF', sheet: '#EAF7FF' },
+  textbook: { icon: 'book-outline', badge: 'BOOK', accent: '#617187', sheet: '#EEF2F6' },
+};
+
+const categories: Array<{
+  key: CategoryKey;
+  title: string;
   description: string;
-  weightLabel: string;
+  icon: string;
+  emoji: string;
+  detail: string;
+  summaryKey: string;
 }> = [
   {
-    key: 'teaching',
-    label: '수업 전달력',
-    shortLabel: '전달력',
-    question: '교수님의 설명은 얼마나 잘 들어왔나요?',
-    description: '선택하면 요약에서 수업 이해도와 전달력이 더 크게 반영됩니다.',
-    weightLabel: '높은 가중치',
-  },
-  {
-    key: 'difficulty',
-    label: '체감 난이도',
-    shortLabel: '난이도',
-    question: '이 강의의 체감 난이도는 어땠나요?',
-    description: '수강 전 가장 많이 보는 기준이라 선택 시 강하게 반영합니다.',
-    weightLabel: '높은 가중치',
-  },
-  {
-    key: 'workload',
-    label: '과제와 준비량',
-    shortLabel: '과제량',
-    question: '과제와 준비량은 어느 정도였나요?',
-    description: '과제 부담, 복습량, 시간 투자 감각을 중심으로 기록합니다.',
-    weightLabel: '높은 가중치',
-  },
-  {
-    key: 'attendance',
-    label: '출결 운영',
-    shortLabel: '출결',
-    question: '출결 운영은 얼마나 엄격했나요?',
-    description: '출석 체크, 지각, 결석 감각을 큐레이션에 반영합니다.',
-    weightLabel: '높은 가중치',
-  },
-  {
-    key: 'grading',
-    label: '학점 체감',
-    shortLabel: '학점',
-    question: '학점은 어느 정도로 잘 나오는 편인가요?',
-    description: '학점 전략을 보는 학생에게 중요한 정보로 강조됩니다.',
-    weightLabel: '높은 가중치',
+    key: 'classMethod',
+    title: '강의력 · 자료',
+    description: '설명 · PPT · 녹화 강의',
+    icon: 'book-outline',
+    emoji: '📘',
+    detail: '교수님의 전달력과 학습 자료',
+    summaryKey: '수업',
   },
   {
     key: 'exam',
-    label: '시험과 족보',
-    shortLabel: '시험',
-    question: '시험 대비와 족보 도움은 어땠나요?',
-    description: '시험 방식과 대비 감각을 한 장의 노트처럼 남깁니다.',
-    weightLabel: '높은 가중치',
+    title: '시험 난이도',
+    description: '난이도 · 시간 압박 · 중간기말 차이',
+    icon: 'document-text-outline',
+    emoji: '📄',
+    detail: '시험 자체의 부담과 체감 난이도',
+    summaryKey: '시험',
+  },
+  {
+    key: 'examMethod',
+    title: '시험 방식 · 정보',
+    description: '객관식 · 서술형 · 족보 · 범위',
+    icon: 'search-outline',
+    emoji: '🧾',
+    detail: '시험 준비에 필요한 실제 정보',
+    summaryKey: '시험정보',
+  },
+  {
+    key: 'assignment',
+    title: '과제',
+    description: '과제량 · 난이도 · 과제 유형',
+    icon: 'folder-open-outline',
+    emoji: '📁',
+    detail: '과제가 얼마나 자주, 어렵게 나왔는지',
+    summaryKey: '과제',
+  },
+  {
+    key: 'teamProject',
+    title: '팀플 · 실습 · 퀴즈',
+    description: '팀플 · 발표 · 실습 · 퀴즈 여부',
+    icon: 'people-outline',
+    emoji: '👥',
+    detail: '수업 운영에서 부담이 되는 활동',
+    summaryKey: '활동',
+  },
+  {
+    key: 'prerequisite',
+    title: '선수지식 · 심화도',
+    description: '기초지식 · 입문/심화 · 이론 중심',
+    icon: 'library-outline',
+    emoji: '📚',
+    detail: '수업을 듣기 전 준비가 필요한 정도',
+    summaryKey: '심화',
+  },
+  {
+    key: 'target',
+    title: '학점 · 추천',
+    description: '학점 체감 · 추천 대상 · 총평',
+    icon: 'star-outline',
+    emoji: '★',
+    detail: '수강 전 마지막 판단에 필요한 내용',
+    summaryKey: '판단',
   },
 ];
 
-const criterionMap = criterionCatalog.reduce(
-  (acc, item) => ({ ...acc, [item.key]: item }),
-  {} as Record<CriterionKey, (typeof criterionCatalog)[number]>,
-);
-
-const lowWeightScore = 2;
-const burstPositions = [
-  { x: -72, y: -44, rotate: '-18deg' },
-  { x: -20, y: -72, rotate: '8deg' },
-  { x: 42, y: -46, rotate: '22deg' },
-  { x: -48, y: 30, rotate: '14deg' },
-  { x: 54, y: 28, rotate: '-12deg' },
-] as const;
-const constellationPatterns = [
-  {
-    nodes: [
-      { left: '14%', top: '64%' },
-      { left: '31%', top: '36%' },
-      { left: '54%', top: '52%' },
-      { left: '70%', top: '28%' },
-      { left: '83%', top: '58%' },
-    ],
-    lines: [
-      { left: '19%', top: '69%', width: 120, rotate: '-58deg' },
-      { left: '36%', top: '41%', width: 116, rotate: '28deg' },
-      { left: '59%', top: '57%', width: 104, rotate: '-50deg' },
-      { left: '75%', top: '33%', width: 105, rotate: '52deg' },
-    ],
-  },
-  {
-    nodes: [
-      { left: '18%', top: '34%' },
-      { left: '34%', top: '57%' },
-      { left: '53%', top: '30%' },
-      { left: '68%', top: '60%' },
-      { left: '82%', top: '39%' },
-    ],
-    lines: [
-      { left: '23%', top: '39%', width: 99, rotate: '55deg' },
-      { left: '39%', top: '62%', width: 125, rotate: '-50deg' },
-      { left: '58%', top: '35%', width: 122, rotate: '58deg' },
-      { left: '73%', top: '65%', width: 88, rotate: '-50deg' },
-    ],
-  },
-  {
-    nodes: [
-      { left: '13%', top: '48%' },
-      { left: '31%', top: '27%' },
-      { left: '47%', top: '55%' },
-      { left: '65%', top: '43%' },
-      { left: '82%', top: '25%' },
-    ],
-    lines: [
-      { left: '18%', top: '53%', width: 106, rotate: '-44deg' },
-      { left: '36%', top: '32%', width: 115, rotate: '57deg' },
-      { left: '52%', top: '60%', width: 96, rotate: '-28deg' },
-      { left: '70%', top: '48%', width: 96, rotate: '-42deg' },
-    ],
-  },
-  {
-    nodes: [
-      { left: '18%', top: '61%' },
-      { left: '28%', top: '34%' },
-      { left: '50%', top: '38%' },
-      { left: '62%', top: '63%' },
-      { left: '80%', top: '48%' },
-    ],
-    lines: [
-      { left: '23%', top: '66%', width: 102, rotate: '-70deg' },
-      { left: '33%', top: '39%', width: 104, rotate: '7deg' },
-      { left: '55%', top: '43%', width: 97, rotate: '63deg' },
-      { left: '67%', top: '68%', width: 101, rotate: '-34deg' },
-    ],
-  },
-] as const;
-
-const criterionArtifacts: Record<CriterionKey, {
-  objectLabel: string;
-  actionLabel: string;
-  accent: string;
+const evaluationVisuals: Record<CategoryKey, {
+  icon: string;
+  emoji: string;
 }> = {
-  teaching: {
-    objectLabel: '오디오 가이드',
-    actionLabel: '설명 흐름을 맞춰보세요',
-    accent: '#16499a',
-  },
-  difficulty: {
-    objectLabel: '난이도 게이지',
-    actionLabel: '체감 높이를 조절해요',
-    accent: '#d84f41',
+  classMethod: { icon: 'book-outline', emoji: '📚' },
+  workload: { icon: 'document-text-outline', emoji: '📝' },
+  exam: { icon: 'reader-outline', emoji: '📄' },
+  attendance: { icon: 'calendar-outline', emoji: '📅' },
+  atmosphere: { icon: 'chatbubble-ellipses-outline', emoji: '💬' },
+  target: { icon: 'star-outline', emoji: '⭐' },
+  examMethod: { icon: 'list-outline', emoji: '🧾' },
+  examInfo: { icon: 'search-outline', emoji: '🔎' },
+  assignment: { icon: 'folder-open-outline', emoji: '📁' },
+  prerequisite: { icon: 'library-outline', emoji: '📚' },
+  depth: { icon: 'layers-outline', emoji: '🧩' },
+  teamProject: { icon: 'people-outline', emoji: '👥' },
+  practice: { icon: 'terminal-outline', emoji: '💻' },
+  quiz: { icon: 'help-circle-outline', emoji: 'Q' },
+  textbook: { icon: 'book-outline', emoji: '📖' },
+};
+
+const evaluationPlan: Record<CategoryKey, CategoryKey[]> = {
+  classMethod: ['classMethod', 'atmosphere'],
+  workload: ['workload'],
+  exam: ['exam'],
+  examMethod: ['examMethod', 'examInfo', 'textbook'],
+  examInfo: ['examInfo'],
+  assignment: ['assignment'],
+  attendance: ['attendance'],
+  atmosphere: ['atmosphere'],
+  target: ['workload', 'target'],
+  prerequisite: ['prerequisite', 'depth'],
+  depth: ['depth'],
+  teamProject: ['teamProject', 'practice', 'quiz'],
+  practice: ['practice'],
+  quiz: ['quiz'],
+  textbook: ['textbook'],
+};
+
+const detailOptions: Record<CategoryKey, string[]> = {
+  classMethod: ['강의력 좋아요', 'PPT 도움돼요', '예시 좋아요', '녹화 강의 제공', '자료 중심', '설명 아쉬워요'],
+  workload: ['노력 반영돼요', '플러스 잘 줘요', '학점 빡세요', '평가 공정해요', '성실형 추천'],
+  exam: ['시험 어려워요', '자료로 충분해요', '시간 부족해요', '중간기말 차이 커요'],
+  examMethod: ['객관식', '서술형', '계산형', 'OX', '기타'],
+  examInfo: ['시험 안내 충분', '응용 많아요', '족보 영향 큼', '범위 구체적', '힌트 제공', '예상 가능'],
+  assignment: ['과제 없음', '큰 과제 여러 번', '큰 과제 한 번', '단순 과제 여러 번', '단순 과제 한 번'],
+  attendance: ['출석 체크해요', '지각 감점 있어요', '출결 널널해요', '대리출석 어려워요', '운영 깔끔해요', '공지 빠른 편이에요'],
+  atmosphere: ['질문 편해요', '피드백 많아요', '엄격한 편이에요', '자유로운 분위기', '열정적이에요', '소통 잘돼요'],
+  target: ['비전공자 추천', '성실형 추천', '학점 챙기기 좋아요', '실무형 추천', '발표 괜찮은 사람', '벼락치기 가능'],
+  prerequisite: ['선수지식 필요', '기초 없어도 가능', '이전 과목 도움', '개념 복습 필요'],
+  depth: ['입문 수준', '이론 중심', '얇고 넓게', '상위 전공 연결', '실무 응용 적음'],
+  teamProject: ['팀플 없음', '팀플 있음', '발표 비중 큼', '보고서 비중 큼', '팀원 영향 큼'],
+  practice: ['실습 없음', '실습 있음', '수업시간 내 가능', '성적 영향 큼', '사전 준비 필요'],
+  quiz: ['퀴즈 없음', '퀴즈 있음', '퀴즈 부담', '성적 영향 큼'],
+  textbook: ['교재 필요', '강의자료 중심', '교재 없어도 가능', '시험 때 교재 중요'],
+};
+
+const evaluationConfigs: Record<CategoryKey, {
+  title: string;
+  body: string;
+  left: string;
+  center: string;
+  right: string;
+  keywords: string[];
+  questions?: Array<{ key: QuestionKey; label: string; left?: string; right?: string }>;
+  singleChoice?: boolean;
+  toggle?: ToggleKey;
+  toggleQuestion?: string;
+}> = {
+  classMethod: {
+    title: '강의력은 어땠나요?',
+    body: '교수님의 설명과 자료가 실제 학습에 도움이 됐는지 알려주세요.',
+    left: '아쉬움',
+    center: '보통',
+    right: '좋음',
+    keywords: detailOptions.classMethod,
+    questions: [
+      { key: 'lectureGood', label: '교수님의 강의력은 전반적으로 좋은 편이다.' },
+      { key: 'lectureMaterialHelpful', label: '판서/PPT/예시가 이해에 실제로 도움이 된다.' },
+      { key: 'recordingHelpful', label: '녹화 강의가 제공되어 학습에 도움이 된다.' },
+    ],
   },
   workload: {
-    objectLabel: '준비 티켓',
-    actionLabel: '부담량을 펀칭해요',
-    accent: '#d7ad4d',
-  },
-  attendance: {
-    objectLabel: '입장 체크',
-    actionLabel: '출결 감각을 체크해요',
-    accent: '#226d68',
-  },
-  grading: {
-    objectLabel: '성취 리본',
-    actionLabel: '학점 체감을 묶어둬요',
-    accent: '#20345f',
+    title: '학점 체감은 어땠나요?',
+    body: '노력과 점수가 얼마나 잘 연결되는지 알려주세요.',
+    left: '가벼움',
+    center: '보통',
+    right: '빡셈',
+    keywords: detailOptions.workload,
+    questions: [
+      { key: 'gradingFair', label: '노력한 만큼 점수가 잘 반영되는 편이다.' },
+      { key: 'gradingPlus', label: '플러스를 잘 채워주시는 편이다.' },
+    ],
   },
   exam: {
-    objectLabel: '시험 파일',
-    actionLabel: '대비 단서를 분류해요',
-    accent: '#7b5c35',
+    title: '시험 난이도는 어땠나요?',
+    body: '시험 자체의 난이도와 시간 압박을 기준으로 답해주세요.',
+    left: '쉬움',
+    center: '보통',
+    right: '어려움',
+    keywords: detailOptions.exam,
+    questions: [
+      { key: 'examDifficultyHard', label: '시험 난이도가 어려운 편이다.' },
+      { key: 'examMaterialEnough', label: '수업 자료만으로도 시험 대비가 충분하다.' },
+      { key: 'examTimeShort', label: '시험 시간 내에 문제를 풀기에는 시간이 부족한 편이다.' },
+      { key: 'examGapLarge', label: '중간고사와 기말고사의 난이도 차이가 큰 편이다.' },
+    ],
+  },
+  examMethod: {
+    title: '시험 방식은 무엇에 가까웠나요?',
+    body: '해당하는 시험 방식을 모두 선택해주세요.',
+    left: '적음',
+    center: '보통',
+    right: '많음',
+    keywords: detailOptions.examMethod,
+  },
+  examInfo: {
+    title: '시험 정보는 충분했나요?',
+    body: '범위 안내, 힌트, 족보 영향 같은 시험 준비 정보를 알려주세요.',
+    left: '부족',
+    center: '보통',
+    right: '충분',
+    keywords: detailOptions.examInfo,
+    questions: [
+      { key: 'examInfoEnough', label: '교수님이 시험에 대한 정보를 충분히 제공하는 편이다.' },
+      { key: 'examApplication', label: '단순 암기보다 응용 문제가 많은 편이다.' },
+      { key: 'pastExamImpact', label: '족보나 기출 문제의 영향이 큰 편이다.' },
+    ],
+  },
+  assignment: {
+    title: '과제는 어떤 편이었나요?',
+    body: '과제량과 과제 유형을 함께 남겨주세요.',
+    left: '적음',
+    center: '보통',
+    right: '많음',
+    keywords: detailOptions.assignment,
+    singleChoice: true,
+    questions: [
+      { key: 'assignmentFrequent', label: '과제 빈도가 높은 편이다.' },
+      { key: 'assignmentHard', label: '과제 난이도가 높은 편이다.' },
+    ],
+  },
+  attendance: {
+    title: '출결 운영은 어땠나요?',
+    body: '출석 체크와 지각 감점을 기준으로 골라주세요.',
+    left: '널널',
+    center: '보통',
+    right: '엄격',
+    keywords: detailOptions.attendance,
+  },
+  atmosphere: {
+    title: '분위기는 어땠나요?',
+    body: '질문, 피드백, 소통 느낌을 기준으로 골라주세요.',
+    left: '어려움',
+    center: '보통',
+    right: '편함',
+    keywords: detailOptions.atmosphere,
+  },
+  target: {
+    title: '추천 체감은 어느 쪽인가요?',
+    body: '학점, 실무, 비전공자 적합도를 기준으로 골라주세요.',
+    left: '비추천',
+    center: '보통',
+    right: '추천',
+    keywords: ['비전공자 추천', '성실형 추천', '학점 챙기기 좋아요', '실무형 추천', '벼락치기 가능'],
+  },
+  prerequisite: {
+    title: '선수지식이 필요했나요?',
+    body: '기초 지식 유무가 체감 난이도에 영향을 줬는지 알려주세요.',
+    left: '불필요',
+    center: '보통',
+    right: '필요',
+    keywords: detailOptions.prerequisite,
+    questions: [
+      { key: 'prerequisiteNeeded', label: '수업을 듣기 위해 선수 지식이 필요한 편이다.' },
+      { key: 'prerequisiteImpact', label: '선수 지식의 유무에 따라 강의 난이도가 크게 달라지는 편이다.' },
+    ],
+  },
+  depth: {
+    title: '전공 심화도는 어느 정도였나요?',
+    body: '입문/이론/응용/상위 과목 연결성을 기준으로 답해주세요.',
+    left: '입문',
+    center: '보통',
+    right: '심화',
+    keywords: detailOptions.depth,
+    questions: [
+      { key: 'depthIntro', label: '강의는 입문 수준에 가까운 편이다.' },
+      { key: 'depthTheory', label: '실무/응용보다 이론 중심의 강의다.' },
+      { key: 'depthBroad', label: '개념을 얇고 넓게 다루는 편이다.' },
+      { key: 'depthAdvanced', label: '상위 전공 과목으로 이어지는 성격이 강하다.' },
+    ],
+  },
+  teamProject: {
+    title: '팀플이나 발표가 있었나요?',
+    body: '팀플이 없었다면 없음으로 선택하고 바로 넘어갈 수 있어요.',
+    left: '낮음',
+    center: '보통',
+    right: '높음',
+    keywords: detailOptions.teamProject,
+    toggle: 'teamProject',
+    toggleQuestion: '수업에서 팀플이 있나요?',
+    questions: [
+      { key: 'teamHigh', label: '팀 프로젝트 비중이 높은 편이다.' },
+      { key: 'teamPresentation', label: '팀 프로젝트에서 발표 비중이 높다.', left: '발표 없음' },
+      { key: 'teamReport', label: '팀 프로젝트에서 성적 보고서 작성 비중이 높다.', left: '보고서 없음' },
+      { key: 'teamGradeImpact', label: '팀 프로젝트가 성적에 미치는 영향이 큰 편이다.' },
+      { key: 'teamMemberImpact', label: '팀원 구성에 따라 체감 난이도가 크게 달라지는 편이다.' },
+    ],
+  },
+  practice: {
+    title: '실습 수업이 있었나요?',
+    body: '실습 비중과 성적 영향도를 기준으로 답해주세요.',
+    left: '낮음',
+    center: '보통',
+    right: '높음',
+    keywords: detailOptions.practice,
+    toggle: 'practice',
+    toggleQuestion: '수업에서 실습이 있나요?',
+    questions: [
+      { key: 'practiceHigh', label: '실습 수업 비중이 높은 편이다.' },
+      { key: 'practiceInClass', label: '실습을 수업 시간 내에 완료할 수 있는 편이다.' },
+      { key: 'practiceGradeImpact', label: '실습이 성적에 중요한 영향을 미치는 편이다.' },
+      { key: 'practicePreparationHard', label: '실습을 위한 사전 준비가 까다로운 편이다.' },
+    ],
+  },
+  quiz: {
+    title: '퀴즈가 있었나요?',
+    body: '퀴즈 부담과 성적 영향도를 알려주세요.',
+    left: '낮음',
+    center: '보통',
+    right: '높음',
+    keywords: detailOptions.quiz,
+    toggle: 'quiz',
+    toggleQuestion: '수업에서 퀴즈가 있나요?',
+    questions: [
+      { key: 'quizHard', label: '퀴즈 난이도가 부담스러운 수준이다.' },
+      { key: 'quizGradeImpact', label: '퀴즈 점수가 최종 성적에 큰 영향을 미치는 편이다.' },
+    ],
+  },
+  textbook: {
+    title: '교재는 얼마나 중요했나요?',
+    body: '시험 준비와 수업 진행에서 교재가 차지한 비중을 알려주세요.',
+    left: '낮음',
+    center: '보통',
+    right: '높음',
+    keywords: detailOptions.textbook,
+    questions: [
+      { key: 'textbookNeeded', label: '시험 준비 시 교재가 필요한 편이다.' },
+      { key: 'textbookMaterialCentered', label: '수업은 교재보다 강의자료 중심으로 진행된다.' },
+    ],
   },
 };
 
-function getCurrentSemesterLabel() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const term = month >= 1 && month <= 6 ? 1 : 2;
-  return `${year}-${term}학기`;
+const categoryKeys = Object.keys(evaluationConfigs) as CategoryKey[];
+const questionKeys = categoryKeys.flatMap((key) => evaluationConfigs[key].questions ?? []).map((question) => question.key);
+
+function createChoiceState() {
+  return categoryKeys.reduce((acc, key) => {
+    acc[key] = [];
+    return acc;
+  }, {} as Record<CategoryKey, string[]>);
 }
 
-function getMetricOptions(key: CriterionKey) {
-  switch (key) {
-    case 'teaching':
-      return [
-        { label: '아쉬움', value: 'easy' as Level, copy: '설명이 자주 끊겼어요' },
-        { label: '무난', value: 'medium' as Level, copy: '따라갈 수 있었어요' },
-        { label: '좋음', value: 'hard' as Level, copy: '이해가 잘 됐어요' },
-      ];
-    case 'difficulty':
-      return [
-        { label: '쉬움', value: 'easy' as Level, copy: '부담이 낮았어요' },
-        { label: '보통', value: 'medium' as Level, copy: '적당히 챙기면 돼요' },
-        { label: '어려움', value: 'hard' as Level, copy: '각오가 필요해요' },
-      ];
-    case 'workload':
-      return [
-        { label: '적음', value: 'easy' as Level, copy: '과제 부담이 적어요' },
-        { label: '보통', value: 'medium' as Level, copy: '평균적인 편이에요' },
-        { label: '많음', value: 'hard' as Level, copy: '시간을 많이 써요' },
-      ];
-    case 'attendance':
-      return [
-        { label: '널널', value: 'easy' as Level, copy: '출결 부담이 낮아요' },
-        { label: '보통', value: 'medium' as Level, copy: '일반적인 수준이에요' },
-        { label: '엄격', value: 'hard' as Level, copy: '출석 관리가 중요해요' },
-      ];
-    case 'grading':
-      return [
-        { label: '후함', value: 'easy' as Level, copy: '학점이 잘 나와요' },
-        { label: '보통', value: 'medium' as Level, copy: '평균적인 편이에요' },
-        { label: '까다로움', value: 'hard' as Level, copy: '평가가 빡빡해요' },
-      ];
-    case 'exam':
-      return [
-        { label: '예측 가능', value: 'easy' as Level, copy: '대비 방향이 보여요' },
-        { label: '보통', value: 'medium' as Level, copy: '평범한 시험이에요' },
-        { label: '변수 많음', value: 'hard' as Level, copy: '넓게 봐야 해요' },
-      ];
-    default:
-      return [];
-  }
+function createFeelState() {
+  return categoryKeys.reduce((acc, key) => {
+    acc[key] = 1;
+    return acc;
+  }, {} as Record<CategoryKey, number>);
 }
 
-function getScoreFromLevel(level: Level) {
-  if (level === 'easy') {
-    return 4;
-  }
-  if (level === 'hard') {
-    return 5;
-  }
-  return 3;
-}
-
-function getApiLevel(key: CriterionKey, level: Level) {
-  if (key === 'teaching') {
-    return level === 'hard' ? '좋음' : level === 'easy' ? '아쉬움' : '보통';
-  }
-  return level === 'easy' ? 'easy' : level === 'hard' ? 'hard' : 'medium';
-}
-
-function getSelectedLabel(key: CriterionKey, level: Level) {
-  return getMetricOptions(key).find((option) => option.value === level)?.label ?? '보통';
-}
-
-function buildCuratorSummary({
-  rating,
-  selectedCriteria,
-  values,
-}: {
-  rating: number;
-  selectedCriteria: CriterionKey[];
-  values: Record<CriterionKey, Level>;
-}) {
-  const ratingLead =
-    rating >= 5
-      ? '전반 만족도가 높은 강의입니다.'
-      : rating >= 4
-        ? '추천할 만한 지점이 분명한 강의입니다.'
-        : rating >= 3
-          ? '장단점을 보고 선택하면 좋은 강의입니다.'
-          : '수강 전 조건을 꼼꼼히 확인하는 편이 좋은 강의입니다.';
-
-  const chosen = selectedCriteria
-    .slice(0, 3)
-    .map((key) => `${criterionMap[key].shortLabel} ${getSelectedLabel(key, values[key])}`)
-    .join(', ');
-
-  return chosen ? `${ratingLead} 큐레이터가 강조한 항목은 ${chosen}입니다.` : ratingLead;
-}
-
-function makePayloadValues(selectedCriteria: CriterionKey[], values: Record<CriterionKey, Level>) {
-  const selected = new Set(selectedCriteria);
-  const weightedScore = (key: CriterionKey) => (selected.has(key) ? getScoreFromLevel(values[key]) : lowWeightScore);
-
-  return {
-    difficulty: selected.has('difficulty') ? getApiLevel('difficulty', values.difficulty) : 'medium',
-    workload: selected.has('workload') ? getApiLevel('workload', values.workload) : 'medium',
-    attendance: selected.has('attendance') ? getApiLevel('attendance', values.attendance) : 'medium',
-    grading: selected.has('grading') ? getApiLevel('grading', values.grading) : 'medium',
-    diffScore: weightedScore('difficulty'),
-    teachingScore: weightedScore('teaching'),
-    gradScore: weightedScore('grading'),
-    workScore: weightedScore('workload'),
-    prerequisiteScore: lowWeightScore,
-    depthScore: selected.has('difficulty') ? getScoreFromLevel(values.difficulty) : lowWeightScore,
-    timeInvestScore: selected.has('workload') ? getScoreFromLevel(values.workload) : lowWeightScore,
-    attScore: weightedScore('attendance'),
-    pastExamScore: weightedScore('exam'),
-  };
+function createQuestionState() {
+  return questionKeys.reduce((acc, key) => {
+    acc[key] = 2;
+    return acc;
+  }, {} as Record<QuestionKey, number>);
 }
 
 export function ReviewWriteScreen({ navigation, route }: Props) {
   const { isAuthenticated } = useAuth();
   const insets = useSafeAreaInsets();
-  const semester = useMemo(() => getCurrentSemesterLabel(), []);
-  const [selectedCriteria, setSelectedCriteria] = useState<CriterionKey[]>([]);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [rating, setRating] = useState(0);
-  const [values, setValues] = useState<Record<CriterionKey, Level>>({
-    teaching: 'medium',
-    difficulty: 'medium',
-    workload: 'medium',
-    attendance: 'medium',
-    grading: 'medium',
-    exam: 'medium',
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [selectedCategories, setSelectedCategories] = useState<CategoryKey[]>([]);
+  const [choices, setChoices] = useState<Record<CategoryKey, string[]>>(createChoiceState);
+  const [feels, setFeels] = useState<Record<CategoryKey, number>>(createFeelState);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<QuestionKey, number>>(createQuestionState);
+  const [toggleAnswers, setToggleAnswers] = useState<Record<ToggleKey, boolean | null>>({
+    teamProject: null,
+    practice: null,
+    quiz: null,
+  });
+  const [extraNotes, setExtraNotes] = useState({
+    prerequisite: '',
+    examOther: '',
   });
   const [content, setContent] = useState('');
-  const [myReviews, setMyReviews] = useState<Review[]>([]);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [evaluationIndex, setEvaluationIndex] = useState(0);
   const [duplicateReview, setDuplicateReview] = useState<Review | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const pulseDriver = useRef(new Animated.Value(0)).current;
-  const stageOpacity = useRef(new Animated.Value(1)).current;
-  const stageTranslateY = useRef(new Animated.Value(0)).current;
 
-  const flow = useMemo<Stage[]>(
-    () => ['rating', 'select', ...selectedCriteria, 'note', 'preview'],
-    [selectedCriteria],
+  const semester = useMemo(() => getCurrentSemesterLabel(), []);
+  const flow = useMemo<StageKey[]>(
+    () => ['select', 'evaluate', 'note', 'preview'],
+    [],
   );
   const stage = flow[Math.min(stepIndex, flow.length - 1)];
-  const progress = `${Math.min(stepIndex + 1, flow.length)} / ${flow.length}`;
-  const summary = buildCuratorSummary({ rating, selectedCriteria, values });
-
-  useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseDriver, {
-          toValue: 1,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseDriver, {
-          toValue: 0,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-
-    return () => loop.stop();
-  }, [pulseDriver]);
+  const semanticStep = getSemanticStep(stage);
+  const evaluationQueue = useMemo(
+    () => selectedCategories.flatMap((category) => evaluationPlan[category] ?? [category]),
+    [selectedCategories],
+  );
+  const report = useMemo(
+    () => buildReport({
+      selectedCategories,
+      choices,
+      feels,
+      questionAnswers,
+      toggleAnswers,
+      content,
+    }),
+    [choices, content, feels, questionAnswers, selectedCategories, toggleAnswers],
+  );
+  const currentSelectionCount = getCurrentSelectionCount(stage, selectedCategories, choices, content);
 
   useEffect(() => {
     setStepIndex((current) => Math.min(current, flow.length - 1));
   }, [flow.length]);
+
+  useEffect(() => {
+    setEvaluationIndex((current) => Math.min(current, Math.max(evaluationQueue.length - 1, 0)));
+  }, [evaluationQueue.length]);
 
   useEffect(() => {
     let isActive = true;
@@ -410,17 +538,16 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
     const checkDuplicate = async () => {
       if (!isAuthenticated) {
         setDuplicateReview(null);
-        setMyReviews([]);
         return;
       }
 
       setIsCheckingDuplicate(true);
+
       try {
         const reviews = await getMyReviews();
         if (!isActive) {
           return;
         }
-        setMyReviews(reviews);
         setDuplicateReview(reviews.find((review) => review.courseId === route.courseId) ?? null);
       } catch {
         if (isActive) {
@@ -440,63 +567,85 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
     };
   }, [isAuthenticated, route.courseId]);
 
-  const animateToStep = (nextStep: number) => {
-    Animated.parallel([
-      Animated.timing(stageOpacity, {
-        toValue: 0,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(stageTranslateY, {
-        toValue: 18,
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+  const transitionTo = (nextStep: number) => {
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 90,
+      useNativeDriver: true,
+    }).start(() => {
       setStepIndex(nextStep);
-      stageTranslateY.setValue(-18);
-      Animated.parallel([
-        Animated.timing(stageOpacity, {
-          toValue: 1,
-          duration: 210,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.spring(stageTranslateY, {
-          toValue: 0,
-          damping: 18,
-          stiffness: 180,
-          mass: 0.9,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
-  const toggleCriterion = (key: CriterionKey) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSelectedCriteria((prev) =>
+  const toggleCategory = (key: CategoryKey) => {
+    setSelectedCategories((prev) =>
       prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
     );
     setErrorMessage('');
   };
 
-  const updateCriterionValue = (key: CriterionKey, value: Level) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setValues((prev) => ({ ...prev, [key]: value }));
+  const toggleChoice = (key: CategoryKey, option: string) => {
+    setChoices((prev) => {
+      const current = prev[key];
+      if (evaluationConfigs[key].singleChoice) {
+        return {
+          ...prev,
+          [key]: current.includes(option) ? [] : [option],
+        };
+      }
+      return {
+        ...prev,
+        [key]: current.includes(option) ? current.filter((item) => item !== option) : [...current, option],
+      };
+    });
+    setErrorMessage('');
+  };
+
+  const setFeelValue = (key: CategoryKey, value: number) => {
+    setFeels((prev) => ({ ...prev, [key]: value }));
+    setErrorMessage('');
+  };
+
+  const setQuestionValue = (key: QuestionKey, value: number) => {
+    setQuestionAnswers((prev) => ({ ...prev, [key]: value }));
+    setErrorMessage('');
+  };
+
+  const setToggleValue = (key: ToggleKey, value: boolean) => {
+    setToggleAnswers((prev) => ({ ...prev, [key]: value }));
+    setChoices((prev) => ({
+      ...prev,
+      [key]: value
+        ? [key === 'teamProject' ? '팀플 있음' : key === 'practice' ? '실습 있음' : '퀴즈 있음']
+        : [key === 'teamProject' ? '팀플 없음' : key === 'practice' ? '실습 없음' : '퀴즈 없음'],
+    }));
     setErrorMessage('');
   };
 
   const validateStage = () => {
-    if (stage === 'select' && selectedCriteria.length === 0) {
-      return '큐레이팅할 평가 항목을 하나 이상 골라주세요.';
+    if (stage === 'select' && selectedCategories.length === 0) {
+      return '평가할 항목을 하나 이상 선택해주세요.';
     }
-    if (stage === 'rating' && rating === 0) {
-      return '별점을 먼저 골라주세요.';
+    if (stage === 'evaluate') {
+      const activeCategory = evaluationQueue[evaluationIndex];
+      const config = activeCategory ? evaluationConfigs[activeCategory] : undefined;
+      if (!activeCategory || !config) {
+        return '현재 항목을 불러오지 못했습니다.';
+      }
+      if (config.toggle && toggleAnswers[config.toggle] === null) {
+        return '해당 항목이 있었는지 먼저 선택해주세요.';
+      }
+      if ((activeCategory === 'examMethod' || config.singleChoice) && choices[activeCategory].length === 0) {
+        return '현재 항목의 키워드를 하나 이상 골라주세요.';
+      }
     }
-    if (stage === 'note' && content.trim().length < 15) {
-      return '최종 코멘트는 15자 이상 남겨주세요.';
+    if (stage === 'note' && content.trim().length < 10) {
+      return '한줄 요약은 10자 이상 작성해주세요.';
     }
     if (stage === 'preview' && duplicateReview) {
       return '이미 이 강의에 남긴 강의평이 있어요. 중복 작성은 막아두었습니다.';
@@ -510,13 +659,48 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
       setErrorMessage(message);
       return;
     }
+
+    if (stage === 'evaluate' && evaluationIndex < evaluationQueue.length - 1) {
+      setErrorMessage('');
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 90,
+        useNativeDriver: true,
+      }).start(() => {
+        setEvaluationIndex((current) => current + 1);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+      });
+      return;
+    }
+
     setErrorMessage('');
-    animateToStep(Math.min(stepIndex + 1, flow.length - 1));
+    transitionTo(Math.min(stepIndex + 1, flow.length - 1));
   };
 
   const goPrev = () => {
     setErrorMessage('');
-    animateToStep(Math.max(stepIndex - 1, 0));
+
+    if (stage === 'evaluate' && evaluationIndex > 0) {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 90,
+        useNativeDriver: true,
+      }).start(() => {
+        setEvaluationIndex((current) => current - 1);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+      });
+      return;
+    }
+
+    transitionTo(Math.max(stepIndex - 1, 0));
   };
 
   const handleSubmit = async () => {
@@ -537,30 +721,42 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
     setErrorMessage('');
 
     try {
-      const weighted = makePayloadValues(selectedCriteria, values);
+      const payload = buildPayloadValues(selectedCategories, choices, feels, questionAnswers, toggleAnswers);
+      const extendedPayload = buildExtendedPayload(choices, questionAnswers, toggleAnswers, extraNotes);
       await createReview({
         courseId: route.courseId,
         semester,
-        rating,
-        difficulty: weighted.difficulty,
-        workload: weighted.workload,
-        attendance: weighted.attendance,
-        grading: weighted.grading,
+        rating: report.rating,
+        difficulty: payload.difficulty,
+        workload: payload.workload,
+        attendance: payload.attendance,
+        grading: payload.grading,
         content: content.trim(),
         isAnonymous: true,
-        oneLineTip: summary,
-        examInfo: selectedCriteria.includes('exam') ? getSelectedLabel('exam', values.exam) : undefined,
-        examKeywords: selectedCriteria.map((key) => criterionMap[key].label),
-        recommendFor: selectedCriteria.map((key) => `${criterionMap[key].shortLabel}: ${getSelectedLabel(key, values[key])}`),
-        diffScore: weighted.diffScore,
-        teachingScore: weighted.teachingScore,
-        gradScore: weighted.gradScore,
-        workScore: weighted.workScore,
-        prerequisiteScore: weighted.prerequisiteScore,
-        depthScore: weighted.depthScore,
-        timeInvestScore: weighted.timeInvestScore,
-        attScore: weighted.attScore,
-        pastExamScore: weighted.pastExamScore,
+        oneLineTip: content.trim(),
+        examTypes: extendedPayload.examTypes,
+        assignmentType: extendedPayload.assignmentType,
+        textbook: extendedPayload.textbook,
+        examInfo: extendedPayload.examInfo,
+        examKeywords: report.keywords,
+        recommendFor: choices.target,
+        notRecommendFor: extendedPayload.notRecommendFor,
+        badges: extendedPayload.badges,
+        examMidtermInfo: extendedPayload.examMidtermInfo,
+        examFinalInfo: extendedPayload.examFinalInfo,
+        examAssignmentInfo: extendedPayload.examAssignmentInfo,
+        examQuizInfo: extendedPayload.examQuizInfo,
+        pastExamHelpfulness: extendedPayload.pastExamHelpfulness,
+        scopePredictability: extendedPayload.scopePredictability,
+        studyResources: extendedPayload.studyResources,
+        problemStyles: extendedPayload.problemStyles,
+        examPrepTip: extendedPayload.examPrepTip,
+        diffScore: payload.diffScore,
+        gradScore: payload.gradScore,
+        workScore: payload.workScore,
+        prerequisiteScore: payload.prerequisiteScore,
+        depthScore: payload.depthScore,
+        pastExamScore: payload.pastExamScore,
       });
       setHasSubmitted(true);
     } catch (error) {
@@ -582,22 +778,16 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
 
   if (duplicateReview) {
     return (
-      <FullScreenState
-        title="이미 남긴 강의평이 있어요"
-        body={`${duplicateReview.semester}에 작성한 리뷰가 있어서 중복 작성은 막아두었습니다. 기존 리뷰는 강의 상세에서 확인할 수 있어요.`}
-        actionLabel="돌아가기"
-        onAction={() => navigation.goBack()}
-      />
+      <DuplicateReviewState onBack={() => navigation.goBack()} />
     );
   }
 
   if (hasSubmitted) {
     return (
-      <FullScreenState
-        title="강의평 전시가 완성됐어요"
-        body="선택한 항목은 더 크게 반영하고, 나머지는 기본값으로 정리해 저장했습니다."
-        actionLabel="강의로 돌아가기"
-        onAction={() => navigation.goBack()}
+      <SubmittedReviewScreen
+        report={report}
+        selectedCategories={selectedCategories}
+        onClose={() => navigation.goBack()}
       />
     );
   }
@@ -605,145 +795,93 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <KeyboardAvoidingView style={styles.keyboardWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View
-          style={[
-            styles.screen,
-            stage === 'rating' ? styles.ratingScreen : null,
-            stage === 'preview' ? styles.previewScreen : null,
-            {
-              paddingTop: stage === 'preview' ? insets.top + 4 : insets.top + spacing.related,
-              paddingBottom: stage === 'preview' ? insets.bottom + 8 : insets.bottom + spacing.related,
-            },
-          ]}
+        <View style={[styles.topHeader, { paddingTop: insets.top + 8 }]}>
+          <PressableScale style={styles.headerBackButton} onPress={stepIndex === 0 ? () => navigation.goBack() : goPrev}>
+            <Ionicons name="chevron-back" size={22} color="#26313F" />
+          </PressableScale>
+          <Text style={styles.headerTitle}>강의평 작성</Text>
+          <View style={styles.headerRightSpacer} />
+        </View>
+
+        <ProgressBars current={semanticStep - 1} total={4} />
+
+        <ScrollView
+          contentContainerStyle={[styles.screen, { paddingBottom: insets.bottom + 118 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {stage === 'rating' ? (
-            <RatingBackdrop pulseDriver={pulseDriver} />
-          ) : stage === 'preview' ? null : (
-            <>
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.ambientGlow,
-                  {
-                    opacity: pulseDriver.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.48] }),
-                    transform: [
-                      {
-                        scale: pulseDriver.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-              <View pointerEvents="none" style={styles.galleryWash} />
-            </>
-          )}
-          {stage !== 'preview' ? (
-            <>
-              <View style={styles.topBar}>
-                <Pressable style={styles.closeButton} onPress={() => navigation.goBack()}>
-                  <Text style={[styles.closeButtonText, stage === 'rating' ? styles.closeButtonTextLight : null]}>×</Text>
-                </Pressable>
-                <View style={[styles.progressChip, stage === 'rating' ? styles.progressChipDark : null]}>
-                  <Text style={[styles.progressText, stage === 'rating' ? styles.progressTextDark : null]}>{progress}</Text>
-                </View>
-              </View>
+          <Animated.View style={[styles.stagePanel, { opacity: fadeAnim }]}>
+            <View style={styles.promptBlock}>
+              <Text style={styles.stageTitle}>{getStageTitle(stage)}</Text>
+              {getStageSubtitle(stage) ? <Text style={styles.stageSubtitle}>{getStageSubtitle(stage)}</Text> : null}
+            </View>
 
-              <View style={styles.promptArea}>
-                <Text style={[styles.eyebrow, stage === 'rating' ? styles.eyebrowDark : null]}>Review studio</Text>
-                <Text style={[styles.title, stage === 'rating' ? styles.titleDark : null]}>{getStageTitle(stage)}</Text>
-                {getStageSubtitle(stage, selectedCriteria) ? (
-                  <Text style={[styles.subtitle, stage === 'rating' ? styles.subtitleDark : null]}>{getStageSubtitle(stage, selectedCriteria)}</Text>
-                ) : null}
-              </View>
-            </>
-          ) : null}
-
-          <Animated.View
-            style={[
-              styles.stageArea,
-              {
-                opacity: stageOpacity,
-                transform: [{ translateY: stageTranslateY }],
-              },
-            ]}
-          >
-            <View style={[styles.stageViewport, stage === 'preview' ? styles.previewStageViewport : null]}>
+            <View style={styles.stageBody}>
               {stage === 'select' ? (
-                <SelectStage selectedCriteria={selectedCriteria} onToggle={toggleCriterion} />
-              ) : null}
-
-              {stage === 'rating' ? (
-                <RatingStage rating={rating} onSelect={(nextRating) => {
-                  setRating(nextRating);
-                  setErrorMessage('');
-                }} pulseDriver={pulseDriver} />
-              ) : null}
-
-              {isCriterionStage(stage) ? (
-                <CriterionStage
-                  criterion={stage}
-                  value={values[stage]}
-                  order={selectedCriteria.indexOf(stage) + 1}
-                  total={selectedCriteria.length}
-                  onChange={(nextValue) => updateCriterionValue(stage, nextValue)}
+                <SelectStage
+                  selectedCategories={selectedCategories}
+                  onToggleCategory={toggleCategory}
                 />
               ) : null}
-
+              {stage === 'evaluate' ? (
+                <EvaluateStage
+                  categoryKey={evaluationQueue[evaluationIndex]}
+                  evaluationIndex={evaluationIndex}
+                  evaluationTotal={evaluationQueue.length}
+                  choices={choices}
+                  feels={feels}
+                  questionAnswers={questionAnswers}
+                  toggleAnswers={toggleAnswers}
+                  onSetFeel={setFeelValue}
+                  onSetQuestion={setQuestionValue}
+                  onSetToggle={setToggleValue}
+                  onToggleChoice={toggleChoice}
+                />
+              ) : null}
               {stage === 'note' ? (
-                <NoteStage content={content} summary={summary} onChangeText={setContent} />
-              ) : null}
-
-              {stage === 'preview' ? (
-                <PreviewStage
-                  rating={rating}
-                  selectedCriteria={selectedCriteria}
-                  values={values}
+                <NoteStage
                   content={content}
-                  summary={summary}
-                  semester={semester}
+                  onChangeText={setContent}
+                  report={report}
+                  choices={choices}
+                  extraNotes={extraNotes}
+                  onChangeExtraNotes={setExtraNotes}
                 />
+              ) : null}
+              {stage === 'preview' ? (
+                <PreviewStage report={report} selectedCategories={selectedCategories} content={content} />
               ) : null}
             </View>
+
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </Animated.View>
 
-          <View style={[styles.footer, stage === 'preview' ? styles.previewFooter : null]}>
-            {errorMessage ? (
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            ) : getStageHint(stage) ? (
-              <Text style={[styles.hintText, stage === 'rating' ? styles.hintTextDark : null]}>{getStageHint(stage)}</Text>
-            ) : stage === 'preview' ? null : (
-              <View style={styles.hintGhost} />
-            )}
-            <View style={styles.footerActions}>
-              {stepIndex > 0 ? (
-                <Pressable
-                  style={[styles.secondaryButton, stage === 'preview' ? styles.previewSecondaryButton : null]}
-                  onPress={goPrev}
-                >
-                  <Text style={styles.secondaryButtonText}>이전</Text>
-                </Pressable>
-              ) : (
-                <View style={styles.secondaryGhost} />
-              )}
-              <Pressable
-                style={[
-                  styles.primaryButton,
-                  stage === 'preview' ? styles.previewPrimaryButton : null,
-                  isSubmitting ? styles.primaryButtonDisabled : null,
-                ]}
-                onPress={stage === 'preview' ? handleSubmit : goNext}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color={theme.text} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>
-                    {stage === 'preview' ? (isAuthenticated ? '강의평 작성완료' : '로그인하고 완료') : '계속'}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
+        </ScrollView>
+
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={styles.bottomSummary}>
+            <Text style={styles.bottomSummaryLabel}>작성 항목</Text>
+            <Text style={styles.bottomSummaryText}>
+              {stage === 'preview'
+                ? '검토 완료'
+                : stage === 'evaluate'
+                  ? `평가 ${Math.min(evaluationIndex + 1, evaluationQueue.length)}/${evaluationQueue.length}`
+                  : getBottomSummary(stage, currentSelectionCount, Object.values(choices).flat().length)}
+            </Text>
           </View>
+          <Button
+            label={
+              stage === 'preview'
+                ? '작성 완료하기'
+                : stage === 'evaluate' && evaluationIndex < evaluationQueue.length - 1
+                  ? '다음 항목'
+                  : '다음으로'
+            }
+            style={styles.primaryButton}
+            onPress={stage === 'preview' ? handleSubmit : goNext}
+            loading={isSubmitting}
+            disabled={isSubmitting || (stage === 'select' && selectedCategories.length === 0)}
+          />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -751,958 +889,438 @@ export function ReviewWriteScreen({ navigation, route }: Props) {
 }
 
 function SelectStage({
-  selectedCriteria,
-  onToggle,
+  selectedCategories,
+  onToggleCategory,
 }: {
-  selectedCriteria: CriterionKey[];
-  onToggle: (key: CriterionKey) => void;
+  selectedCategories: CategoryKey[];
+  onToggleCategory: (key: CategoryKey) => void;
 }) {
-  const pinDriver = useRef(new Animated.Value(0)).current;
-  const [lastPinned, setLastPinned] = useState<CriterionKey | null>(null);
-
-  const handleToggle = (key: CriterionKey) => {
-    setLastPinned(key);
-    pinDriver.setValue(0);
-    onToggle(key);
-    Animated.spring(pinDriver, {
-      toValue: 1,
-      damping: 14,
-      stiffness: 128,
-      mass: 0.9,
-      useNativeDriver: true,
-    }).start();
-  };
-
   return (
-    <View style={styles.focusDeck}>
-      <View style={styles.focusDeckHeader}>
-        <View>
-          <Text style={styles.focusDeckKicker}>REPORT MATERIAL</Text>
-          <Text style={styles.focusDeckTitle}>강의의 핵심 장면을 고르세요</Text>
-        </View>
-        <View style={styles.focusDeckCounter}>
-          <Text style={styles.focusDeckCounterValue}>{selectedCriteria.length}</Text>
-          <Text style={styles.focusDeckCounterLabel}>FOCUS</Text>
-        </View>
+    <View style={styles.pickList}>
+      <View style={styles.interviewLead}>
+        <Text style={styles.interviewLeadEyebrow}>1분 강의 인터뷰</Text>
+        <Text style={styles.interviewLeadTitle}>기억나는 경험부터 골라주세요</Text>
+        <Text style={styles.interviewLeadBody}>
+          세 항목을 전부 고르지 않아도 괜찮아요. 선택한 항목만 차례대로 물어봅니다.
+        </Text>
       </View>
-      <View style={styles.focusDeckRule} />
-      {criterionCatalog.map((criterion) => {
-        const active = selectedCriteria.includes(criterion.key);
-        const justPinned = lastPinned === criterion.key;
+      {categories.map((category, index) => {
+        const active = selectedCategories.includes(category.key);
         return (
-          <Animated.View
-            key={criterion.key}
+          <PressableScale
+            key={category.key}
             style={[
-              {
-                transform: [
-                  {
-                    scale:
-                      active && justPinned
-                        ? pinDriver.interpolate({
-                            inputRange: [0, 0.42, 1],
-                            outputRange: [0.86, 1.1, 1],
-                          })
-                        : 1,
-                  },
-                ],
-              },
+              styles.pickCard,
+              active ? styles.pickCardActive : null,
             ]}
+            onPress={() => onToggleCategory(category.key)}
           >
-            <Pressable
-              style={[styles.focusDeckRow, active ? styles.focusDeckRowActive : null]}
-              onPress={() => handleToggle(criterion.key)}
-            >
-              <View style={[styles.focusDeckIndex, active ? styles.focusDeckIndexActive : null]}>
-                <Text style={[styles.focusDeckIndexText, active ? styles.focusDeckIndexTextActive : null]}>
-                  {active ? String(selectedCriteria.indexOf(criterion.key) + 1).padStart(2, '0') : '--'}
-                </Text>
+            <View style={styles.pickCardMain}>
+              <EvaluationItemIcon categoryKey={category.key} icon={category.icon} index={index} active={active} />
+              <View style={styles.pickCopy}>
+                <View style={styles.pickTitleRow}>
+                  <Text style={styles.pickTitle}>{category.title}</Text>
+                  {index === 1 ? <Text style={styles.betaLabel}>중요</Text> : null}
+                </View>
+                <Text style={styles.pickDescription}>{category.description}</Text>
+                <Text style={styles.pickDetail}>{category.detail}</Text>
               </View>
-              <View style={styles.focusDeckCopy}>
-                <Text style={[styles.focusDeckRowTitle, active ? styles.focusDeckRowTitleActive : null]}>
-                  {criterion.label}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.focusDeckRowBody, active ? styles.focusDeckRowBodyActive : null]}
-                >
-                  {criterion.description}
-                </Text>
+              <View style={[styles.pickCheck, active ? styles.pickCheckActive : null]}>
+                <Ionicons name="checkmark" size={17} color={active ? '#FFFFFF' : '#CAD3E1'} />
               </View>
-              <Text style={[styles.focusDeckCheck, active ? styles.focusDeckCheckActive : null]}>
-                {active ? 'SELECTED' : 'PICK'}
-              </Text>
-            </Pressable>
-          </Animated.View>
+            </View>
+          </PressableScale>
         );
       })}
+      <View style={styles.infoNotice}>
+        <Text style={styles.infoIcon}>i</Text>
+        <Text style={styles.infoText}>작성한 후기는 익명으로 등록되며, 다른 학생들에게 큰 도움이 됩니다.</Text>
+      </View>
     </View>
   );
 }
 
-function RatingStage({
-  rating,
-  onSelect,
-  pulseDriver,
+function EvaluateStage({
+  categoryKey,
+  evaluationIndex,
+  evaluationTotal,
+  choices,
+  feels,
+  questionAnswers,
+  toggleAnswers,
+  onSetFeel,
+  onSetQuestion,
+  onSetToggle,
+  onToggleChoice,
 }: {
-  rating: number;
-  onSelect: (value: number) => void;
-  pulseDriver: Animated.Value;
+  categoryKey?: CategoryKey;
+  evaluationIndex: number;
+  evaluationTotal: number;
+  choices: Record<CategoryKey, string[]>;
+  feels: Record<CategoryKey, number>;
+  questionAnswers: Record<QuestionKey, number>;
+  toggleAnswers: Record<ToggleKey, boolean | null>;
+  onSetFeel: (key: CategoryKey, value: number) => void;
+  onSetQuestion: (key: QuestionKey, value: number) => void;
+  onSetToggle: (key: ToggleKey, value: boolean) => void;
+  onToggleChoice: (key: CategoryKey, option: string) => void;
 }) {
-  const burstDriver = useRef(new Animated.Value(0)).current;
-  const impactDriver = useRef(new Animated.Value(0)).current;
-  const stampDriver = useRef(new Animated.Value(0)).current;
-  const [constellationIndex, setConstellationIndex] = useState(0);
-  const constellation = constellationPatterns[constellationIndex];
+  if (!categoryKey) {
+    return null;
+  }
 
-  const handleSelect = (value: number) => {
-    burstDriver.setValue(0);
-    impactDriver.setValue(0);
-    stampDriver.setValue(0);
-    setConstellationIndex((current) => {
-      if (constellationPatterns.length <= 1) {
-        return current;
-      }
-      const next = Math.floor(Math.random() * (constellationPatterns.length - 1));
-      return next >= current ? next + 1 : next;
-    });
-    onSelect(value);
-    Animated.parallel([
-      Animated.spring(stampDriver, {
-        toValue: 1,
-        damping: 18,
-        stiffness: 68,
-        mass: 1.34,
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.spring(burstDriver, {
-          toValue: 1,
-          damping: 8,
-          stiffness: 170,
-          mass: 0.6,
-          useNativeDriver: true,
-        }),
-        Animated.timing(burstDriver, {
-          toValue: 0,
-          duration: 420,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.timing(impactDriver, {
-        toValue: 1,
-        duration: 620,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+  const visual = evaluationVisuals[categoryKey];
+  const config = evaluationConfigs[categoryKey];
+  const isToggleOff = config.toggle ? toggleAnswers[config.toggle] === false : false;
 
   return (
-    <View style={styles.ratingStage}>
-      <View style={styles.starField}>
-        {Array.from({ length: 14 }).map((_, index) => (
-          <Animated.Text
-            key={`spark-${index}`}
-            style={[
-              styles.spark,
-              {
-                left: `${8 + ((index * 23) % 84)}%`,
-                top: `${10 + ((index * 17) % 76)}%`,
-                opacity: pulseDriver.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.28, index % 2 === 0 ? 0.82 : 0.48],
-                }),
-                transform: [
-                  {
-                    scale: pulseDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.72, index % 2 === 0 ? 1.28 : 1.08],
-                    }),
-                  },
-                  {
-                    translateY: pulseDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [index % 2 === 0 ? -5 : 5, index % 2 === 0 ? 6 : -6],
-                    }),
-                  },
-                  {
-                    translateX: pulseDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [index % 3 === 0 ? -4 : 3, index % 3 === 0 ? 5 : -3],
-                    }),
-                  },
-                  {
-                    rotate: pulseDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0deg', index % 2 === 0 ? '16deg' : '-12deg'],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            ✦
-          </Animated.Text>
-        ))}
-        {rating ? (
-          <Animated.Text
-            pointerEvents="none"
-            style={[
-              styles.stampBackStar,
-              {
-                opacity: impactDriver.interpolate({
-                  inputRange: [0, 0.28, 1],
-                  outputRange: [0, 0.2, 0],
-                }),
-                transform: [
-                  {
-                    scale: impactDriver.interpolate({
-                      inputRange: [0, 0.35, 1],
-                      outputRange: [0.72, 1.18, 1.34],
-                    }),
-                  },
-                  {
-                    rotate: impactDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['-12deg', '8deg'],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            ★
-          </Animated.Text>
-        ) : null}
-        {rating ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.ratingStampPlate,
-              {
-                opacity: stampDriver.interpolate({
-                  inputRange: [0, 0.38, 1],
-                  outputRange: [0, 0.48, 0.28],
-                }),
-                transform: [
-                  {
-                    scale: stampDriver.interpolate({
-                      inputRange: [0, 0.42, 1],
-                      outputRange: [1.42, 0.96, 1],
-                    }),
-                  },
-                  {
-                    rotate: stampDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['-18deg', '-8deg'],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.ratingStampRule} />
-            <Text style={styles.ratingStampScore}>{rating}.0</Text>
-            <Text style={styles.ratingStampCopy}>INHA REVIEW</Text>
-            <View style={styles.ratingStampRule} />
-          </Animated.View>
-        ) : null}
-        {constellation.lines.map((line, index) =>
-          index < rating - 1 ? (
-            <Animated.View
-              key={`constellation-line-${constellationIndex}-${index}`}
-              style={[
-                styles.constellationLineSegment,
-                {
-                  left: line.left,
-                  top: line.top,
-                  width: line.width,
-                  opacity: burstDriver.interpolate({
-                    inputRange: [0, 0.32, 1],
-                    outputRange: [0.36, 0.82, 0.56],
-                  }),
-                  transform: [
-                    { rotate: line.rotate },
-                    {
-                      scaleX: burstDriver.interpolate({
-                        inputRange: [0, 0.4, 1],
-                        outputRange: [0.86, 1.03, 1],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            />
-          ) : null,
-        )}
-        {constellation.nodes.map((node, index) => {
-          const active = index < rating;
-          return (
-            <View
-              key={`constellation-${constellationIndex}-${index}`}
-              style={[
-                styles.constellationNodeWrap,
-                { left: node.left, top: node.top },
-              ]}
-            >
-              <Animated.Text
-                style={[
-                  styles.constellationStar,
-                  active ? styles.constellationStarActive : null,
-                  {
-                    opacity: active
-                      ? 1
-                      : 0.18,
-                    transform: [
-                      {
-                        scale: active
-                          ? burstDriver.interpolate({
-                              inputRange: [0, 0.35, 1],
-                              outputRange: [1, 1.34, 1],
-                            })
-                          : 1,
-                      },
-                    ],
-                  },
-                ]}
+    <View style={styles.evaluateWrap}>
+      <View style={styles.evalInterviewHeader}>
+        <View style={styles.evalProgressPill}>
+          <Text style={styles.evalProgressText}>{evaluationIndex + 1}/{evaluationTotal}</Text>
+        </View>
+        <Text style={styles.evalInterviewLabel}>이번 질문</Text>
+      </View>
+      <View style={styles.evalQuestionCard}>
+        <View style={styles.evalQuestionHeader}>
+          <EvaluationItemIcon categoryKey={categoryKey} icon={visual.icon} index={categoryKey === 'workload' ? 1 : 0} active />
+          <View style={styles.evalQuestionCopy}>
+            <Text style={styles.evalQuestionTitle}>{config.title}</Text>
+            <Text style={styles.evalQuestionBody}>{config.body}</Text>
+          </View>
+        </View>
+        <FeelingScale
+          value={feels[categoryKey]}
+          labels={[config.left, config.center, config.right]}
+          onChange={(value) => onSetFeel(categoryKey, value)}
+        />
+        <View style={styles.evalReportNotice}>
+          <Ionicons name="stats-chart-outline" size={16} color={theme.blue} />
+          <Text style={styles.evalReportNoticeText}>
+            이 답변은 강의 리포트에서 항목별 비율과 평균 수치로 정리돼요.
+          </Text>
+        </View>
+        {config.toggle ? (
+          <View style={styles.booleanSwitch}>
+            <Text style={styles.booleanQuestion}>{config.toggleQuestion}</Text>
+            <View style={styles.booleanOptions}>
+              <PressableScale
+                style={[styles.booleanOption, toggleAnswers[config.toggle] === false ? styles.booleanOptionActive : null]}
+                onPress={() => onSetToggle(config.toggle as ToggleKey, false)}
               >
-                ★
-              </Animated.Text>
+                <Text style={[styles.booleanOptionText, toggleAnswers[config.toggle] === false ? styles.booleanOptionTextActive : null]}>
+                  없었어요
+                </Text>
+              </PressableScale>
+              <PressableScale
+                style={[styles.booleanOption, toggleAnswers[config.toggle] === true ? styles.booleanOptionActive : null]}
+                onPress={() => onSetToggle(config.toggle as ToggleKey, true)}
+              >
+                <Text style={[styles.booleanOptionText, toggleAnswers[config.toggle] === true ? styles.booleanOptionTextActive : null]}>
+                  있었어요
+                </Text>
+              </PressableScale>
             </View>
-          );
-        })}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.impactRing,
-            {
-              opacity: impactDriver.interpolate({
-                inputRange: [0, 0.2, 1],
-                outputRange: [0, 0.18, 0],
-              }),
-              transform: [
-                {
-                  scale: impactDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.75, 1.55],
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
-      </View>
-
-      <View style={styles.ratingButtons}>
-        {[1, 2, 3, 4, 5].map((value) => {
-          const active = value <= rating;
-          return (
-            <Pressable
-              key={`rating-${value}`}
-              style={[styles.ratingButton, active ? styles.ratingButtonActive : null]}
-              onPress={() => handleSelect(value)}
-            >
-              <Text style={[styles.ratingButtonText, active ? styles.ratingButtonTextActive : null]}>
-                {active ? '★' : '☆'}
-              </Text>
-            </Pressable>
-          );
-        })}
+          </View>
+        ) : null}
+        {config.questions && !isToggleOff ? (
+          <View style={styles.questionList}>
+            {config.questions.map((question) => (
+              <QuestionScale
+                key={question.key}
+                question={question.label}
+                value={questionAnswers[question.key]}
+                left={question.left}
+                right={question.right}
+                onChange={(value) => onSetQuestion(question.key, value)}
+              />
+            ))}
+          </View>
+        ) : null}
+        <View style={styles.keywordWrap}>
+          {config.keywords.map((option) => {
+            const selected = choices[categoryKey].includes(option);
+            return (
+              <PressableScale
+                key={option}
+                style={[styles.keywordChip, selected ? styles.keywordChipActive : null]}
+                onPress={() => onToggleChoice(categoryKey, option)}
+              >
+                <Text style={[styles.keywordChipText, selected ? styles.keywordChipTextActive : null]}>{option}</Text>
+              </PressableScale>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
 }
 
-function RatingBackdrop({ pulseDriver }: { pulseDriver: Animated.Value }) {
-  const driftDriver = useRef(new Animated.Value(0)).current;
-  const twinkleDriver = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const driftLoop = Animated.loop(
-      Animated.timing(driftDriver, {
-        toValue: 1,
-        duration: 9200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const twinkleLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(twinkleDriver, {
-          toValue: 1,
-          duration: 1650,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(twinkleDriver, {
-          toValue: 0,
-          duration: 1650,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    driftLoop.start();
-    twinkleLoop.start();
-
-    return () => {
-      driftLoop.stop();
-      twinkleLoop.stop();
-    };
-  }, [driftDriver, twinkleDriver]);
-
-  return (
-    <View pointerEvents="none" style={styles.ratingBackdrop}>
-      <Animated.View
-        style={[
-          styles.ratingBackdropBeam,
-          {
-            opacity: pulseDriver.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.44] }),
-            transform: [
-              {
-                translateX: driftDriver.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-34, 34],
-                }),
-              },
-              {
-                rotate: driftDriver.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['-14deg', '-4deg'],
-                }),
-              },
-            ],
-          },
-        ]}
-      />
-      {Array.from({ length: 38 }).map((_, index) => (
-        <Animated.View
-          key={`rating-particle-${index}`}
-          style={[
-            index % 6 === 0 ? styles.ratingSparkParticle : styles.ratingParticle,
-            {
-              left: `${2 + ((index * 29) % 96)}%`,
-              top: `${4 + ((index * 17) % 90)}%`,
-              opacity: twinkleDriver.interpolate({
-                inputRange: [0, 1],
-                outputRange: [index % 2 === 0 ? 0.18 : 0.52, index % 2 === 0 ? 0.78 : 0.26],
-              }),
-              transform: [
-                {
-                  translateY: driftDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [index % 2 === 0 ? 54 : -48, index % 2 === 0 ? -54 : 48],
-                  }),
-                },
-                {
-                  translateX: driftDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [index % 3 === 0 ? -26 : 18, index % 3 === 0 ? 28 : -20],
-                  }),
-                },
-                {
-                  scale: twinkleDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [index % 2 === 0 ? 0.56 : 1.1, index % 2 === 0 ? 1.42 : 0.76],
-                  }),
-                },
-                {
-                  rotate: driftDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [index % 2 === 0 ? '0deg' : '18deg', index % 2 === 0 ? '180deg' : '-160deg'],
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
-
-function CriterionStage({
-  criterion,
+function QuestionScale({
+  question,
   value,
-  order,
-  total,
+  left = '전혀 아님',
+  right = '매우 그럼',
   onChange,
 }: {
-  criterion: CriterionKey;
-  value: Level;
-  order: number;
-  total: number;
-  onChange: (value: Level) => void;
+  question: string;
+  value: number;
+  left?: string;
+  right?: string;
+  onChange: (value: number) => void;
 }) {
-  const meta = criterionMap[criterion];
-  const artifact = criterionArtifacts[criterion];
-  const options = getMetricOptions(criterion);
-  const motionDriver = useRef(new Animated.Value(0.78)).current;
-
-  const handleChange = (nextValue: Level) => {
-    motionDriver.setValue(0);
-    onChange(nextValue);
-    Animated.spring(motionDriver, {
-      toValue: 1,
-      damping: 13,
-      stiffness: 126,
-      mass: 0.92,
-      useNativeDriver: true,
-    }).start();
-  };
-
   return (
-    <View style={styles.focusAnswerStage}>
-      <View style={styles.focusAnswerSheet}>
-        <View style={styles.focusAnswerTop}>
-          <Text style={styles.focusAnswerKicker}>
-            FOCUS {String(Math.max(order, 1)).padStart(2, '0')} / {String(Math.max(total, 1)).padStart(2, '0')}
-          </Text>
-          <Text style={styles.focusAnswerMode}>{artifact.objectLabel}</Text>
-        </View>
-        <Text style={styles.focusAnswerTitle}>{meta.label}</Text>
-        <Text style={styles.focusAnswerBody}>{meta.description}</Text>
-        <Animated.View
-          style={[
-            styles.focusAnswerArtifact,
-            {
-              opacity: motionDriver.interpolate({
-                inputRange: [0, 0.25, 1],
-                outputRange: [0.42, 1, 0.92],
-              }),
-              transform: [
-                {
-                  scale: motionDriver.interpolate({
-                    inputRange: [0, 0.38, 1],
-                    outputRange: [0.82, 1.08, 1],
-                  }),
-                },
-                {
-                  translateY: motionDriver.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [10, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <CriterionArtifactVisual criterion={criterion} value={value} />
-        </Animated.View>
-        <View style={styles.focusAnswerStamp}>
-          <Text style={styles.focusAnswerStampValue}>{getSelectedLabel(criterion, value)}</Text>
-          <Text style={styles.focusAnswerStampLabel}>{artifact.actionLabel}</Text>
-        </View>
+    <View style={styles.questionScaleCard}>
+      <View style={styles.questionScaleTop}>
+        <View style={styles.questionScaleDot} />
+        <Text style={styles.questionText}>{question}</Text>
       </View>
-
-      <View style={styles.metricOptions}>
-        {options.map((option) => {
-          const active = option.value === value;
-          return (
-            <Pressable
-              key={`${criterion}-${option.value}`}
-              style={[styles.metricOption, active ? styles.metricOptionActive : null]}
-              onPress={() => handleChange(option.value)}
-            >
-              <Text style={[styles.metricOptionLabel, active ? styles.metricOptionLabelActive : null]}>
-                {option.label}
-              </Text>
-              <Text style={[styles.metricOptionCopy, active ? styles.metricOptionCopyActive : null]}>
-                {option.copy}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.fiveScale}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <PressableScale
+            key={item}
+            style={[styles.fiveScaleDot, value === item ? styles.fiveScaleDotActive : null]}
+            onPress={() => onChange(item)}
+          >
+            <Text style={[styles.fiveScaleDotText, value === item ? styles.fiveScaleDotTextActive : null]}>
+              {item + 1}
+            </Text>
+          </PressableScale>
+        ))}
+      </View>
+      <View style={styles.fiveScaleLabels}>
+        <Text style={styles.fiveScaleLabel}>{left}</Text>
+        <Text style={styles.fiveScaleLabel}>{right}</Text>
       </View>
     </View>
   );
 }
 
-function CriterionArtifactVisual({ criterion, value }: { criterion: CriterionKey; value: Level }) {
-  const activeCount = value === 'easy' ? 1 : value === 'medium' ? 2 : 3;
-
-  if (criterion === 'teaching') {
-    return (
-      <View style={styles.artifactBars}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={`teaching-bar-${index}`}
-            style={[
-              styles.artifactSoundBar,
-              { height: 20 + index * 13 },
-              index < activeCount ? styles.artifactSoundBarActive : null,
-            ]}
-          />
-        ))}
-      </View>
-    );
-  }
-
-  if (criterion === 'difficulty') {
-    return (
-      <View style={styles.artifactGauge}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={`difficulty-step-${index}`}
-            style={[
-              styles.artifactGaugeStep,
-              { height: 16 + index * 15 },
-              index < activeCount ? styles.artifactGaugeStepActive : null,
-            ]}
-          />
-        ))}
-      </View>
-    );
-  }
-
-  if (criterion === 'workload') {
-    return (
-      <View style={styles.artifactTicket}>
-        <View style={styles.artifactTicketStub} />
-        {[0, 1, 2].map((index) => (
-          <View
-            key={`workload-punch-${index}`}
-            style={[styles.artifactPunch, index < activeCount ? styles.artifactPunchActive : null]}
-          />
-        ))}
-      </View>
-    );
-  }
-
-  if (criterion === 'attendance') {
-    return (
-      <View style={styles.artifactChecklist}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={`attendance-check-${index}`}
-            style={[styles.artifactCheckRow, index < activeCount ? styles.artifactCheckRowActive : null]}
+function FeelingScale({
+  value,
+  labels,
+  onChange,
+}: {
+  value: number;
+  labels: [string, string, string];
+  onChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.feelingScale}>
+      <View style={styles.scaleTrack}>
+        {[0, 1, 2].map((item) => (
+          <PressableScale
+            key={item}
+            style={[styles.scaleSegment, value === item ? styles.scaleSegmentActive : null]}
+            onPress={() => onChange(item)}
           >
-            <View style={styles.artifactCheckBox} />
-            <View style={styles.artifactCheckLine} />
-          </View>
+            <Text style={[styles.scaleSegmentText, value === item ? styles.scaleSegmentTextActive : null]}>{labels[item]}</Text>
+          </PressableScale>
         ))}
       </View>
-    );
-  }
+      <View style={styles.scaleDots}>
+        {[0, 1, 2].map((item) => (
+          <View key={item} style={[styles.scaleDot, value === item ? styles.scaleDotActive : null]} />
+        ))}
+      </View>
+    </View>
+  );
+}
 
-  if (criterion === 'grading') {
-    return (
-      <View style={styles.artifactRibbon}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={`grading-ribbon-${index}`}
-            style={[styles.artifactRibbonBand, index < activeCount ? styles.artifactRibbonBandActive : null]}
-          />
-        ))}
-      </View>
-    );
-  }
+function EvaluationItemIcon({
+  categoryKey,
+  icon,
+  index,
+  active,
+}: {
+  categoryKey?: CategoryKey;
+  icon: string;
+  index: number;
+  active: boolean;
+}) {
+  const spec = categoryKey ? miniIconSpecs[categoryKey] : undefined;
 
   return (
-    <View style={styles.artifactFile}>
-      <View style={styles.artifactFileTab} />
-      {[0, 1, 2].map((index) => (
-        <View
-          key={`exam-file-${index}`}
-          style={[
-            styles.artifactFileLine,
-            { width: `${76 - index * 13}%` },
-            index < activeCount ? styles.artifactFileLineActive : null,
-          ]}
+    <View style={[styles.itemIconBox, active ? styles.itemIconBoxActive : null]}>
+      <View style={[styles.inhaIconSheet, spec ? { backgroundColor: spec.sheet } : null]}>
+        <Ionicons
+          name={(spec?.icon ?? icon) as never}
+          size={21}
+          color={active ? (spec?.accent ?? theme.blue) : '#657183'}
         />
-      ))}
+        <View style={styles.inhaIconLines}>
+          <View style={[styles.inhaIconLine, spec ? { backgroundColor: spec.accent } : null]} />
+          <View style={[styles.inhaIconLineShort, spec ? { backgroundColor: spec.accent } : null]} />
+        </View>
+      </View>
+      <View style={[styles.inhaIconBadge, active && spec ? { backgroundColor: spec.accent } : null]}>
+        <Text style={[styles.inhaIconBadgeText, active ? styles.inhaIconBadgeTextActive : null]}>
+          {spec?.badge ?? (index === 1 ? 'A+' : 'INFO')}
+        </Text>
+      </View>
     </View>
   );
 }
 
 function NoteStage({
   content,
-  summary,
   onChangeText,
+  report,
+  choices,
+  extraNotes,
+  onChangeExtraNotes,
 }: {
   content: string;
-  summary: string;
   onChangeText: (value: string) => void;
+  report: ReturnType<typeof buildReport>;
+  choices: Record<CategoryKey, string[]>;
+  extraNotes: { prerequisite: string; examOther: string };
+  onChangeExtraNotes: (value: { prerequisite: string; examOther: string }) => void;
 }) {
+  const needsPrerequisiteNote = choices.prerequisite.some((item) => item.includes('필요') || item.includes('복습') || item.includes('과목'));
+  const needsExamOtherNote = choices.examMethod.includes('기타');
+
   return (
-    <View style={styles.noteStage}>
-      <View style={styles.summaryPanel}>
-        <Text style={styles.summaryLabel}>큐레이터 초안</Text>
-        <Text style={styles.summaryText}>{summary}</Text>
+    <View style={styles.noteWrap}>
+      <View style={styles.noteGuide}>
+        <Text style={styles.noteGuideTitle}>이 문장은 리포트의 마지막 인상으로 보여요</Text>
+        <Text style={styles.noteGuideBody}>
+          {report.keywords.length > 0
+            ? `${report.keywords.slice(0, 3).join(' · ')} 같은 흐름을 살려 짧게 정리해보세요.`
+            : '수업 분위기나 가장 기억에 남은 점을 한 문장으로 남겨주세요.'}
+        </Text>
       </View>
+      {needsPrerequisiteNote ? (
+        <TextInput
+          value={extraNotes.prerequisite}
+          onChangeText={(value) => onChangeExtraNotes({ ...extraNotes, prerequisite: value })}
+          placeholder="필요했던 과목이나 지식이 있다면 적어주세요."
+          placeholderTextColor={theme.faint}
+          style={styles.shortNoteInput}
+        />
+      ) : null}
+      {needsExamOtherNote ? (
+        <TextInput
+          value={extraNotes.examOther}
+          onChangeText={(value) => onChangeExtraNotes({ ...extraNotes, examOther: value })}
+          placeholder="기타 시험 방식이 있다면 적어주세요."
+          placeholderTextColor={theme.faint}
+          style={styles.shortNoteInput}
+        />
+      ) : null}
       <TextInput
         multiline
         value={content}
+        maxLength={100}
         onChangeText={onChangeText}
-        placeholder="예: 설명은 깔끔하지만 과제 마감이 빠르게 돌아와서 일정 관리를 같이 해야 했어요."
+        placeholder="예: 실습 예제가 많아서 처음 배우기 좋았어요."
         placeholderTextColor={theme.faint}
         style={styles.noteInput}
         textAlignVertical="top"
       />
-      <View style={styles.inputMeta}>
-        <Text style={styles.inputMetaText}>최소 15자</Text>
-        <Text style={styles.inputMetaText}>{content.trim().length}자</Text>
-      </View>
+      <Text style={styles.countText}>{content.trim().length} / 100</Text>
     </View>
   );
 }
 
 function PreviewStage({
-  rating,
-  selectedCriteria,
-  values,
+  report,
+  selectedCategories,
   content,
-  summary,
-  semester,
 }: {
-  rating: number;
-  selectedCriteria: CriterionKey[];
-  values: Record<CriterionKey, Level>;
+  report: ReturnType<typeof buildReport>;
+  selectedCategories: CategoryKey[];
   content: string;
-  summary: string;
-  semester: string;
 }) {
-  const finishDriver = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const finalConstellation = constellationPatterns[Math.max(0, rating - 1) % constellationPatterns.length];
-  const receiptBars = Array.from({ length: 34 }, (_, index) => 18 + ((index * 17 + rating * 9) % 58));
-
-  useEffect(() => {
-    Animated.sequence([
-      Animated.delay(120),
-      Animated.spring(finishDriver, {
-        toValue: 1,
-        damping: 14,
-        stiffness: 96,
-        mass: 1.18,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [finishDriver]);
+  const selectedTitles = selectedCategories
+    .map((key) => categories.find((category) => category.key === key)?.title)
+    .filter(Boolean)
+    .join(', ');
+  const workloadSummary = report.examWorkload.slice(0, 3).join(' · ');
+  const targetSummary = report.targets.slice(0, 3).join(' · ');
+  const keywordSummary = report.keywords.slice(0, 4).join(' · ');
 
   return (
-    <View style={styles.receiptStage}>
-      <Animated.View
-        style={[
-          styles.receiptRoller,
-          {
-            transform: [
-              {
-                scaleX: scrollY.interpolate({
-                  inputRange: [0, 120],
-                  outputRange: [1, 0.965],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <View style={styles.receiptRollerHighlight} />
-        <View style={styles.receiptRollerTop} />
-        <View style={styles.receiptRollerLeftCap} />
-        <View style={styles.receiptRollerRightCap} />
-      </Animated.View>
-      <Animated.View
-        style={[
-          styles.receiptPaper,
-          {
-            opacity: finishDriver.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.72, 1],
-            }),
-            transform: [
-              {
-                translateY: finishDriver.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-118, 0],
-                }),
-              },
-              {
-                translateY: scrollY.interpolate({
-                  inputRange: [0, 120],
-                  outputRange: [0, 0],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Animated.ScrollView
-          style={styles.receiptScroll}
-          contentContainerStyle={styles.receiptScrollContent}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: true },
-          )}
-        >
-          <Animated.View
-            style={[
-              styles.receiptHeader,
-              {
-                opacity: finishDriver,
-                transform: [
-                  {
-                    translateY: finishDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [18, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <Text style={styles.receiptOverline}>INHA REVIEW REPORT</Text>
-            <Text style={styles.receiptTitle}>강의평 리포트</Text>
-            <View style={styles.receiptMetaRow}>
-              <Text style={styles.receiptMetaText}>{semester}</Text>
-              <Text style={styles.receiptMetaText}>{selectedCriteria.length} FOCUS</Text>
-            </View>
-          </Animated.View>
+    <View style={styles.previewConfirm}>
+      <View style={styles.previewIntro}>
+        <Text style={styles.previewIntroTitle}>강의평 등록 전 확인</Text>
+        <Text style={styles.previewIntroBody}>
+          선택한 경험과 한줄평을 바탕으로 아래처럼 요약돼요.
+        </Text>
+      </View>
 
-          <View style={styles.receiptDash} />
-
-          <Animated.View
-            style={[
-              styles.receiptConstellationBlock,
-              {
-                opacity: finishDriver.interpolate({
-                  inputRange: [0, 0.7, 1],
-                  outputRange: [0, 0.72, 1],
-                }),
-                transform: [
-                  {
-                    scale: finishDriver.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.94, 1],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            {finalConstellation.lines.map((line, index) =>
-              index < rating - 1 ? (
-                <View
-                  key={`receipt-line-${index}`}
-                  style={[
-                    styles.receiptConstellationLine,
-                    { left: line.left, top: line.top, width: line.width, transform: [{ rotate: line.rotate }] },
-                  ]}
-                />
-              ) : null,
-            )}
-            {finalConstellation.nodes.map((node, index) => (
-              <Text
-                key={`receipt-star-${index}`}
-                style={[
-                  styles.receiptConstellationStar,
-                  { left: node.left, top: node.top, opacity: index < rating ? 0.88 : 0.14 },
-                ]}
-              >
-                ★
-              </Text>
-            ))}
-            <View style={styles.receiptStamp}>
-              <Text style={styles.receiptStampScore}>{rating}.0</Text>
-              <Text style={styles.receiptStampCopy}>CURATED</Text>
-            </View>
-          </Animated.View>
-
-          <View style={styles.receiptDash} />
-
-          <View style={styles.receiptTotalRow}>
-            <Text style={styles.receiptTotalLabel}>TOTAL</Text>
-            <Text style={styles.receiptTotalValue}>{rating}.0 STAR</Text>
+      <View style={styles.previewLedgerCard}>
+        <View style={styles.previewLedgerHeader}>
+          <View style={styles.previewLedgerIcon}>
+            <Ionicons name="document-text-outline" size={22} color="#7C8797" />
           </View>
-          <View style={styles.receiptInfoList}>
-            <View style={styles.receiptInfoRow}>
-              <Text style={styles.receiptInfoLabel}>FOCUS COUNT</Text>
-              <Text style={styles.receiptInfoValue}>{selectedCriteria.length}</Text>
-            </View>
-            <View style={styles.receiptInfoRow}>
-              <Text style={styles.receiptInfoLabel}>WEIGHT MODE</Text>
-              <Text style={styles.receiptInfoValue}>SELECTED HIGH</Text>
-            </View>
-            <View style={styles.receiptInfoRow}>
-              <Text style={styles.receiptInfoLabel}>STATUS</Text>
-              <Text style={styles.receiptInfoValue}>READY</Text>
-            </View>
-          </View>
-
-          <View style={styles.receiptDash} />
-
-          <Text style={styles.receiptSectionTitle}>FOCUS DETAIL</Text>
-          {selectedCriteria.map((criterion) => (
-            <View key={`receipt-row-${criterion}`} style={styles.receiptFocusRow}>
-              <Text style={styles.receiptFocusLabel}>{criterionMap[criterion].label}</Text>
-              <Text style={styles.receiptFocusValue}>{getSelectedLabel(criterion, values[criterion])}</Text>
-            </View>
-          ))}
-
-          <View style={styles.receiptDash} />
-
-          <Text style={styles.receiptSectionTitle}>CURATOR SUMMARY</Text>
-          <Text style={styles.receiptParagraph}>{summary}</Text>
-          <Text style={styles.receiptParagraph}>{content.trim()}</Text>
-
-          <View style={styles.receiptDash} />
-
-          <Text style={styles.receiptSectionTitle}>REVIEW SIGNAL</Text>
-          <View style={styles.receiptBars}>
-            {receiptBars.map((height, index) => (
-              <View key={`receipt-bar-wrap-${index}`} style={[styles.receiptBarWrap, { height }]}>
-                <Animated.View
-                  style={[
-                    styles.receiptBar,
-                    {
-                      transform: [
-                        {
-                          scaleY: finishDriver.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.08, 1],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                />
-              </View>
-            ))}
-          </View>
-          <View style={styles.receiptAxis}>
-            <Text style={styles.receiptAxisText}>START</Text>
-            <Text style={styles.receiptAxisText}>ARCHIVE</Text>
-          </View>
-
-          <View style={styles.receiptFinishPanel}>
-            <Text style={styles.receiptFinishTitle}>작성 완료 준비</Text>
-            <Text style={styles.receiptFinishText}>
-              아래 버튼을 누르면 이 리포트가 강의 상세에 저장됩니다.
-            </Text>
-          </View>
-        </Animated.ScrollView>
-        <View pointerEvents="none" style={styles.receiptPaperTexture}>
-          {Array.from({ length: 9 }).map((_, index) => (
-            <View
-              key={`paper-fiber-${index}`}
-              style={[
-                styles.receiptPaperFiber,
-                {
-                  top: 38 + index * 58,
-                  left: index % 2 === 0 ? 18 : 48,
-                  right: index % 2 === 0 ? 42 : 22,
-                  opacity: index % 3 === 0 ? 0.18 : 0.11,
-                },
-              ]}
-            />
-          ))}
+          <Text style={styles.previewLedgerTitle}>
+            강의평 요약 <Text style={styles.previewLedgerTitleMuted}>(익명 등록)</Text>
+          </Text>
         </View>
-      </Animated.View>
+
+        <View style={styles.previewDivider} />
+
+        <PreviewMetric icon="layers-outline" label="작성 항목" value={selectedTitles || '선택 항목'} />
+        <PreviewMetric icon="sparkles-outline" label="전체 분위기" value={report.moodTitle} helper={report.moodCopy} />
+        <PreviewMetric icon="school-outline" label="시험 · 과제" value={workloadSummary || '선택한 정보 없음'} />
+        <PreviewMetric icon="people-outline" label="추천 대상" value={targetSummary || '선택한 정보 없음'} />
+      </View>
+
+      <View style={styles.previewFootnotes}>
+        <Text style={styles.previewFootnote}>* 핵심 키워드: {keywordSummary || '강의평 요약'}</Text>
+        <Text style={styles.previewFootnote}>* 작성 완료 후 강의 리포트와 추천 판단에 반영돼요.</Text>
+      </View>
+
+      <View style={styles.previewQuotePanel}>
+        <View style={styles.previewQuoteHeader}>
+          <Text style={styles.previewQuoteLabel}>대표 한줄평</Text>
+          <View style={styles.previewQuoteBadge}>
+            <Text style={styles.previewQuoteBadgeText}>검토</Text>
+          </View>
+        </View>
+        <Text style={styles.previewQuoteText}>{content.trim()}</Text>
+      </View>
+
+      <View style={styles.previewNotice}>
+        <Ionicons name="information-circle" size={18} color="#171A1F" />
+        <Text style={styles.previewNoticeText}>작성한 강의평은 익명으로 등록됩니다.</Text>
+      </View>
+    </View>
+  );
+}
+
+function PreviewMetric({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  helper?: string;
+}) {
+  return (
+    <View style={styles.previewMetricRow}>
+      <View style={styles.previewMetricIcon}>
+        <Ionicons name={icon as never} size={18} color="#7A8798" />
+      </View>
+      <View style={styles.previewMetricCopy}>
+        <Text style={styles.previewMetricLabel}>{label}</Text>
+        {helper ? <Text style={styles.previewMetricHelper}>{helper}</Text> : null}
+      </View>
+      <Text style={styles.previewMetricValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ProgressBars({ current, total }: { current: number; total: number }) {
+  return (
+    <View style={styles.progressBars}>
+      {Array.from({ length: total }).map((_, index) => (
+        <View key={`progress-${index}`} style={[styles.progressBar, index <= current ? styles.progressBarActive : null]} />
+      ))}
     </View>
   );
 }
@@ -1723,102 +1341,394 @@ function FullScreenState({
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <View style={styles.fullState}>
-        <View style={styles.fullStateOrb}>
-          {loading ? <ActivityIndicator color={theme.gold} /> : <Text style={styles.fullStateOrbText}>완</Text>}
-        </View>
-        <Text style={styles.fullStateTitle}>{title}</Text>
+        <StatePanel label={title} loading={loading} />
         <Text style={styles.fullStateBody}>{body}</Text>
-        {actionLabel && onAction ? (
-          <Pressable style={styles.fullStateButton} onPress={onAction}>
-            <Text style={styles.fullStateButtonText}>{actionLabel}</Text>
-          </Pressable>
-        ) : null}
+        {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} /> : null}
       </View>
     </SafeAreaView>
   );
 }
 
-function getStageTitle(stage: Stage) {
-  if (stage === 'select') {
-    return '무엇을 자세히 남길까요?';
-  }
-  if (stage === 'rating') {
-    return '별점부터 고르세요';
-  }
-  if (stage === 'note') {
-    return '한 줄을 남겨주세요';
-  }
-  if (stage === 'preview') {
-    return '마지막 확인';
-  }
-  return criterionMap[stage].question;
+function DuplicateReviewState({ onBack }: { onBack: () => void }) {
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <View style={styles.duplicateState}>
+        <Text style={styles.duplicateTitle}>
+          작성한 리뷰가 있어서{'\n'}중복 작성이 불가능합니다.
+        </Text>
+        <Button label="돌아가기" style={styles.duplicateButton} onPress={onBack} />
+      </View>
+    </SafeAreaView>
+  );
 }
 
-function getStageSubtitle(stage: Stage, selectedCriteria: CriterionKey[]) {
+function SubmittedReviewScreen({
+  report,
+  selectedCategories,
+  onClose,
+}: {
+  report: ReturnType<typeof buildReport>;
+  selectedCategories: CategoryKey[];
+  onClose: () => void;
+}) {
+  const selectedTitles = selectedCategories
+    .map((key) => categories.find((category) => category.key === key)?.title)
+    .filter(Boolean)
+    .join(', ');
+  const keywordPreview = report.keywords.slice(0, 3).join(' · ');
+
+  return (
+    <SafeAreaView style={styles.submittedSafeArea} edges={['left', 'right']}>
+      <ScrollView contentContainerStyle={styles.submittedContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.submittedHero}>
+          <Text style={styles.submittedTitle}>강의평 작성 완료!</Text>
+          <View style={styles.submittedBanner}>
+            <Text style={styles.submittedBannerText}>후배들이 수강 흐름을 빠르게 파악할 수 있게 정리됐어요</Text>
+          </View>
+        </View>
+
+        <View style={styles.submittedSummary}>
+          <SummaryLine label="작성 항목" value={selectedTitles || '선택 항목'} />
+          <SummaryLine label="전체 분위기" value={report.moodTitle} />
+          <SummaryLine label="대표 키워드" value={keywordPreview || '강의평 등록 완료'} />
+          <SummaryLine label="등록 방식" value="익명 강의평" />
+        </View>
+
+        <View style={styles.submittedCallout}>
+          <View style={styles.submittedCalloutIcon}>
+            <Ionicons name="information-circle" size={18} color="#171A1F" />
+          </View>
+          <Text style={styles.submittedCalloutText}>
+            작성한 정보는 강의 리포트와 추천 판단에 반영돼요.
+          </Text>
+        </View>
+
+        <View style={styles.submittedTooltip}>
+          <Text style={styles.submittedTooltipText}>정성껏 남긴 후기가 다른 학생의 수강 선택을 도와줘요</Text>
+          <View style={styles.submittedTooltipTail} />
+        </View>
+
+        <PressableScale style={styles.submittedPrimaryButton} onPress={onClose}>
+          <Text style={styles.submittedPrimaryButtonText}>강의로 돌아가기</Text>
+        </PressableScale>
+
+        <PressableScale style={styles.submittedSecondaryButton} onPress={onClose}>
+          <Text style={styles.submittedSecondaryButtonText}>완료</Text>
+        </PressableScale>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function SummaryLine({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.submittedSummaryRow}>
+      <Text style={styles.submittedSummaryLabel}>{label}</Text>
+      <Text style={styles.submittedSummaryValue}>{value}</Text>
+    </View>
+  );
+}
+
+function getCurrentSemesterLabel() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const term = month >= 1 && month <= 6 ? 1 : 2;
+  return `${year}-${term}학기`;
+}
+
+function getSemanticStep(stage: StageKey) {
   if (stage === 'select') {
-    return '';
+    return 1;
   }
-  if (stage === 'rating') {
-    return '';
+  if (stage === 'evaluate') {
+    return 2;
   }
   if (stage === 'note') {
-    return '';
+    return 3;
+  }
+  return 4;
+}
+
+function getCurrentSelectionCount(
+  stage: StageKey,
+  selectedCategories: CategoryKey[],
+  choices: Record<CategoryKey, string[]>,
+  content: string,
+) {
+  if (stage === 'select') return selectedCategories.length;
+  if (stage === 'evaluate') return Object.values(choices).flat().length;
+  if (stage === 'note') return content.trim().length >= 10 ? 1 : 0;
+  return 1;
+}
+
+function getBottomSummary(stage: StageKey, currentSelectionCount: number, keywordCount: number) {
+  if (stage === 'select') {
+    return `${currentSelectionCount}개 항목 선택됨`;
+  }
+  if (stage === 'evaluate') {
+    return `키워드 ${keywordCount}개 선택`;
+  }
+  if (stage === 'note') {
+    return `키워드 ${keywordCount}개 ㅣ 문장 ${currentSelectionCount}/1`;
+  }
+  return `키워드 ${keywordCount}/10`;
+}
+
+function getStageTitle(stage: StageKey) {
+  if (stage === 'select') {
+    return '이 강의에서 무엇이 기억났나요?';
+  }
+  if (stage === 'evaluate') {
+    return '한 항목씩 천천히 정리해볼게요';
+  }
+  if (stage === 'note') {
+    return '마지막으로 한 문장만 남겨주세요';
   }
   if (stage === 'preview') {
-    return `${selectedCriteria.length}개 항목`;
+    return '등록 전 리포트를 확인해주세요';
   }
   return '';
 }
 
-function getStageHint(stage: Stage) {
+function getStageSubtitle(stage: StageKey) {
   if (stage === 'select') {
-    return '';
+    return '먼저 큰 흐름만 고르면, 다음 화면에서 세부 경험을 이어서 묻습니다.';
   }
-  if (stage === 'rating') {
-    return '';
+  if (stage === 'evaluate') {
+    return '답변은 이후 강의 리포트의 판단 근거로 정리됩니다.';
+  }
+  if (stage === 'note') {
+    return '리포트의 결론처럼 보일 한줄평을 남겨주세요.';
   }
   if (stage === 'preview') {
-    return '';
+    return '선택한 경험과 한줄평이 아래처럼 요약되어 익명 등록됩니다.';
   }
   return '';
 }
 
-function isCriterionStage(stage: Stage): stage is CriterionKey {
-  return criterionCatalog.some((criterion) => criterion.key === stage);
+function buildReport({
+  selectedCategories,
+  choices,
+  feels,
+  questionAnswers,
+  toggleAnswers,
+  content,
+}: {
+  selectedCategories: CategoryKey[];
+  choices: Record<CategoryKey, string[]>;
+  feels: Record<CategoryKey, number>;
+  questionAnswers: Record<QuestionKey, number>;
+  toggleAnswers: Record<ToggleKey, boolean | null>;
+  content: string;
+}) {
+  const flattened = Object.values(choices).flat();
+  const high = (...keys: QuestionKey[]) => keys.some((key) => questionAnswers[key] >= 3);
+  const low = (...keys: QuestionKey[]) => keys.some((key) => questionAnswers[key] <= 1);
+  const positiveSignals = flattened.filter((item) => item.includes('좋') || item.includes('추천') || item.includes('깔끔') || item.includes('편')).length
+    + (feels.classMethod === 2 ? 1 : 0)
+    + (feels.atmosphere === 2 ? 1 : 0)
+    + (feels.target === 2 ? 1 : 0)
+    + (high('lectureGood', 'lectureMaterialHelpful', 'gradingFair', 'gradingPlus', 'examInfoEnough') ? 1 : 0);
+  const negativeSignals = flattened.filter((item) => item.includes('많') || item.includes('엄격') || item.includes('압박') || item.includes('어렵') || item.includes('필요')).length
+    + (feels.workload === 2 ? 1 : 0)
+    + (feels.exam === 2 ? 1 : 0)
+    + (feels.attendance === 2 ? 1 : 0)
+    + (high('examDifficultyHard', 'examTimeShort', 'assignmentFrequent', 'assignmentHard', 'prerequisiteNeeded') ? 1 : 0);
+  const moodTitle = flattened.some((item) => item.includes('실무') || item.includes('피드백'))
+    ? '성장형 강의'
+    : flattened.some((item) => item.includes('널널') || item.includes('자유')) || (feels.workload === 0 && feels.attendance === 0)
+      ? '편안형 강의'
+      : negativeSignals >= Math.max(positiveSignals, 2)
+        ? '준비형 강의'
+        : '균형형 강의';
+  const moodCopy = getReportSentence(questionAnswers, choices, toggleAnswers, flattened);
+  const examWorkload = [
+    ...choices.exam,
+    ...choices.examMethod,
+    ...choices.examInfo,
+    ...choices.assignment,
+    ...(toggleAnswers.teamProject === true ? ['팀플 있음'] : toggleAnswers.teamProject === false ? ['팀플 없음'] : []),
+    ...(toggleAnswers.quiz === true ? ['퀴즈 있음'] : toggleAnswers.quiz === false ? ['퀴즈 없음'] : []),
+  ].filter(Boolean);
+  const targets = choices.target.length > 0 ? [...new Set(choices.target)] : ['성실형 학생 추천'];
+  const questionKeywords = [
+    high('examDifficultyHard') ? '시험 어려움' : low('examDifficultyHard') ? '시험 부담 낮음' : '',
+    high('assignmentFrequent', 'assignmentHard') ? '과제 부담' : '',
+    high('prerequisiteNeeded', 'prerequisiteImpact') ? '선수지식 필요' : '',
+    high('depthAdvanced') ? '상위 전공 연결' : '',
+    high('lectureGood', 'lectureMaterialHelpful') ? '강의력 좋음' : '',
+  ].filter(Boolean);
+  const keywords = [...new Set([...flattened, ...questionKeywords, ...selectedCategories.map((key) => categories.find((item) => item.key === key)?.title ?? '')])]
+    .filter(Boolean)
+    .slice(0, 12);
+  const rating = Math.max(3, Math.min(5, 4 + Math.min(positiveSignals, 2) * 0.5 - Math.min(negativeSignals, 2) * 0.5));
+
+  return {
+    moodTitle,
+    moodCopy,
+    examWorkload: examWorkload.length > 0 ? examWorkload : ['아직 시험/과제 데이터가 없어요'],
+    targets,
+    keywords,
+    rating,
+    summary: content.trim(),
+  };
 }
 
-const selectionMarkerStyles: Record<CriterionKey, object> = {
-  teaching: { left: 10, top: 20, transform: [{ rotate: '-8deg' }] },
-  difficulty: { right: 12, top: 28, transform: [{ rotate: '7deg' }] },
-  workload: { left: 0, top: 154, transform: [{ rotate: '5deg' }] },
-  attendance: { right: 0, top: 158, transform: [{ rotate: '-5deg' }] },
-  grading: { left: 38, bottom: 14, transform: [{ rotate: '-4deg' }] },
-  exam: { right: 40, bottom: 16, transform: [{ rotate: '5deg' }] },
-};
+function buildPayloadValues(
+  selectedCategories: CategoryKey[],
+  choices: Record<CategoryKey, string[]>,
+  feels: Record<CategoryKey, number>,
+  questionAnswers: Record<QuestionKey, number>,
+  toggleAnswers: Record<ToggleKey, boolean | null>,
+) {
+  const selected = new Set<CategoryKey>([
+    ...selectedCategories,
+    ...selectedCategories.flatMap((category) => evaluationPlan[category] ?? [category]),
+    ...Object.entries(choices)
+      .filter(([, options]) => options.length > 0)
+      .map(([key]) => key as CategoryKey),
+  ]);
+  const has = (key: CategoryKey, word: string) => choices[key].some((item) => item.includes(word));
+  const level = (easy: boolean, hard: boolean) => hard ? 'hard' : easy ? 'easy' : 'medium';
+  const score = (key: CategoryKey, easy: boolean, hard: boolean, feelScore?: number) => {
+    if (!selected.has(key)) {
+      return null;
+    }
+    if (feelScore === 2) {
+      return 9;
+    }
+    if (feelScore === 0) {
+      return 3;
+    }
+    if (hard) {
+      return 9;
+    }
+    if (easy) {
+      return 3;
+    }
+    return 6;
+  };
 
-const selectionPinPositions: Record<CriterionKey, {
-  left?: number;
-  right?: number;
-  top?: number;
-  bottom?: number;
-  transform: Array<{ rotate: string }>;
-}> = {
-  teaching: { left: 22, top: 58, transform: [{ rotate: '-7deg' }] },
-  difficulty: { right: 22, top: 62, transform: [{ rotate: '6deg' }] },
-  workload: { left: 26, top: 135, transform: [{ rotate: '4deg' }] },
-  attendance: { right: 24, top: 138, transform: [{ rotate: '-5deg' }] },
-  grading: { left: 54, bottom: 30, transform: [{ rotate: '-3deg' }] },
-  exam: { right: 48, bottom: 28, transform: [{ rotate: '4deg' }] },
-};
+  const q = (key: QuestionKey) => questionAnswers[key] ?? 2;
+  const avgScore = (...keys: QuestionKey[]) => {
+    const average = keys.reduce((sum, key) => sum + q(key), 0) / Math.max(keys.length, 1);
+    return Math.round(1 + (average / 4) * 9);
+  };
+  const difficultyHard = has('examInfo', '응용') || q('examDifficultyHard') >= 3 || q('examTimeShort') >= 3 || feels.exam === 2;
+  const difficultyEasy = has('exam', '자료') || q('examDifficultyHard') <= 1 || feels.exam === 0;
+  const workloadHard = q('assignmentFrequent') >= 3 || q('assignmentHard') >= 3 || toggleAnswers.teamProject === true || feels.assignment === 2;
+  const workloadEasy = choices.assignment.includes('과제 없음') || q('assignmentFrequent') <= 1 || feels.assignment === 0;
+  const attendanceHard = has('attendance', '엄격') || has('attendance', '지각') || has('attendance', '체크') || feels.attendance === 2;
+  const attendanceEasy = has('attendance', '널널') || feels.attendance === 0;
+  const gradingEasy = choices.target.some((item) => item.includes('학점')) || q('gradingFair') >= 3 || q('gradingPlus') >= 3 || feels.workload === 2;
+  const prerequisiteHard = q('prerequisiteNeeded') >= 3 || q('prerequisiteImpact') >= 3 || has('prerequisite', '필요');
+  const prerequisiteEasy = q('prerequisiteNeeded') <= 1 || has('prerequisite', '기초 없어도');
+  const depthHigh = q('depthAdvanced') >= 3 || q('depthTheory') >= 3 || q('practiceGradeImpact') >= 3;
+  const depthLow = q('depthIntro') >= 3 || q('depthBroad') >= 3;
 
-const metricArtifactContainerStyles: Record<CriterionKey, object> = {
-  teaching: { borderColor: 'rgba(22,73,154,0.46)', backgroundColor: 'rgba(22,73,154,0.06)' },
-  difficulty: { borderColor: 'rgba(216,79,65,0.46)', backgroundColor: 'rgba(216,79,65,0.06)' },
-  workload: { borderColor: 'rgba(215,173,77,0.56)', backgroundColor: 'rgba(215,173,77,0.10)' },
-  attendance: { borderColor: 'rgba(34,109,104,0.48)', backgroundColor: 'rgba(34,109,104,0.07)' },
-  grading: { borderColor: 'rgba(32,52,95,0.50)', backgroundColor: 'rgba(32,52,95,0.06)' },
-  exam: { borderColor: 'rgba(123,92,53,0.46)', backgroundColor: 'rgba(123,92,53,0.07)' },
-};
+  return {
+    difficulty: level(difficultyEasy, difficultyHard),
+    workload: level(workloadEasy, workloadHard),
+    attendance: level(attendanceEasy, attendanceHard),
+    grading: gradingEasy ? 'easy' : 'medium',
+    diffScore: selected.has('exam') ? avgScore('examDifficultyHard', 'examTimeShort', 'examGapLarge') : score('exam', difficultyEasy, difficultyHard, feels.exam),
+    gradScore: selected.has('target') ? avgScore('gradingFair', 'gradingPlus') : null,
+    workScore: selected.has('assignment') ? avgScore('assignmentFrequent', 'assignmentHard') : score('assignment', workloadEasy, workloadHard, feels.assignment),
+    prerequisiteScore: selected.has('prerequisite') ? avgScore('prerequisiteNeeded', 'prerequisiteImpact') : null,
+    depthScore: selected.has('depth') ? avgScore('depthTheory', 'depthBroad', 'depthAdvanced') : null,
+    pastExamScore: selected.has('examInfo') ? (q('pastExamImpact') >= 3 ? 9 : q('pastExamImpact') <= 1 ? 3 : 6) : null,
+  };
+}
+
+function getReportSentence(
+  questionAnswers: Record<QuestionKey, number>,
+  choices: Record<CategoryKey, string[]>,
+  toggleAnswers: Record<ToggleKey, boolean | null>,
+  flattened: string[],
+) {
+  const q = (key: QuestionKey) => questionAnswers[key] ?? 2;
+
+  if (q('examDifficultyHard') >= 3 || q('assignmentHard') >= 3) {
+    return '시험이나 과제 부담이 있는 편이라 일정과 준비 시간을 미리 잡아두면 좋아요.';
+  }
+  if (q('lectureGood') >= 3 && q('lectureMaterialHelpful') >= 3) {
+    return '강의 전달과 자료에 긍정적인 신호가 있어 수업 흐름을 따라가기 좋은 편이에요.';
+  }
+  if (q('gradingFair') >= 3 || q('gradingPlus') >= 3) {
+    return '노력한 만큼 점수에 반영된다는 신호가 있어 성실형 학생에게 잘 맞아요.';
+  }
+  if (toggleAnswers.teamProject === true || toggleAnswers.practice === true) {
+    return '팀플이나 실습 여부가 체감 난이도에 영향을 줄 수 있어요.';
+  }
+  if (choices.examMethod.length > 0 || flattened.length > 0) {
+    return `${[...choices.examMethod, ...flattened].slice(0, 2).join(', ')} 같은 정보가 남아 수강 판단에 도움이 돼요.`;
+  }
+  return '선택한 항목을 바탕으로 강의 분위기를 정리합니다.';
+}
+
+function buildExtendedPayload(
+  choices: Record<CategoryKey, string[]>,
+  questionAnswers: Record<QuestionKey, number>,
+  toggleAnswers: Record<ToggleKey, boolean | null>,
+  extraNotes: { prerequisite: string; examOther: string },
+) {
+  const q = (key: QuestionKey) => questionAnswers[key] ?? 2;
+  const label = (value: number) => value >= 3 ? '높음' : value <= 1 ? '낮음' : '보통';
+  const examTypes = choices.examMethod.filter((item) => item !== '기타');
+  const problemStyles = [
+    q('examApplication') >= 3 ? '응용형' : '',
+    choices.examMethod.includes('객관식') ? '객관식' : '',
+    choices.examMethod.includes('서술형') ? '서술형' : '',
+    choices.examMethod.includes('계산형') ? '계산형' : '',
+    choices.examMethod.includes('OX') ? 'OX' : '',
+  ].filter(Boolean);
+  const badges = [
+    q('lectureGood') >= 3 ? '강의력 좋음' : '',
+    q('examDifficultyHard') >= 3 ? '시험 어려움' : '',
+    q('assignmentFrequent') >= 3 ? '과제 잦음' : '',
+    q('prerequisiteNeeded') >= 3 ? '선수지식 필요' : '',
+    toggleAnswers.teamProject === true ? '팀플 있음' : '',
+    toggleAnswers.practice === true ? '실습 있음' : '',
+    toggleAnswers.quiz === true ? '퀴즈 있음' : '',
+  ].filter(Boolean);
+
+  return {
+    examTypes: examTypes.length > 0 ? examTypes : undefined,
+    assignmentType: choices.assignment[0],
+    textbook: choices.textbook[0] ?? (q('textbookNeeded') >= 3 ? '교재 필요' : q('textbookMaterialCentered') >= 3 ? '강의자료 중심' : undefined),
+    examInfo: [
+      `시험 난이도 ${label(q('examDifficultyHard'))}`,
+      `시험 시간 압박 ${label(q('examTimeShort'))}`,
+      choices.examInfo.join(', '),
+      extraNotes.examOther ? `기타 시험 방식: ${extraNotes.examOther}` : '',
+    ].filter(Boolean).join(' · '),
+    notRecommendFor: q('examDifficultyHard') >= 3 || q('assignmentHard') >= 3
+      ? ['시험/과제 부담이 큰 학기를 피하고 싶은 사람']
+      : undefined,
+    badges,
+    examMidtermInfo: `중간/기말 난이도 차이 ${label(q('examGapLarge'))}`,
+    examFinalInfo: `시험 범위 예측 ${label(q('examInfoEnough'))}`,
+    examAssignmentInfo: `과제 빈도 ${label(q('assignmentFrequent'))} · 과제 난이도 ${label(q('assignmentHard'))}`,
+    examQuizInfo: toggleAnswers.quiz === null
+      ? undefined
+      : toggleAnswers.quiz ? `퀴즈 난이도 ${label(q('quizHard'))} · 성적 영향 ${label(q('quizGradeImpact'))}` : '퀴즈 없음',
+    pastExamHelpfulness: label(q('pastExamImpact')),
+    scopePredictability: label(q('examInfoEnough')),
+    studyResources: [
+      q('lectureMaterialHelpful') >= 3 ? 'PPT/판서/예시' : '',
+      q('recordingHelpful') >= 3 ? '녹화 강의' : '',
+      q('textbookNeeded') >= 3 ? '교재' : '',
+      extraNotes.prerequisite ? `선수지식: ${extraNotes.prerequisite}` : '',
+    ].filter(Boolean),
+    problemStyles,
+    examPrepTip: [
+      q('pastExamImpact') >= 3 ? '족보와 기출 영향을 확인하세요.' : '',
+      q('examApplication') >= 3 ? '단순 암기보다 응용 대비가 필요해요.' : '',
+      q('textbookNeeded') >= 3 ? '교재 기반 정리가 도움이 돼요.' : '',
+    ].filter(Boolean).join(' '),
+  };
+}
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -1828,1845 +1738,1371 @@ const styles = StyleSheet.create({
   keyboardWrap: {
     flex: 1,
   },
-  screen: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    paddingHorizontal: spacing.page,
-    gap: 10,
-    overflow: 'hidden',
-  },
-  previewScreen: {
-    paddingHorizontal: 0,
-    gap: 0,
-  },
-  ratingScreen: {
-    backgroundColor: '#f7f9fd',
-  },
-  ratingBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#f7f9fd',
-  },
-  ratingBackdropBeam: {
-    position: 'absolute',
-    width: 140,
-    height: 980,
-    left: '45%',
-    top: -160,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-  },
-  ratingParticle: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(215,173,77,0.86)',
-  },
-  ratingSparkParticle: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    backgroundColor: 'rgba(215,173,77,0.72)',
-    transform: [{ rotate: '45deg' }],
-  },
-  galleryWash: {
-    position: 'absolute',
-    left: -70,
-    right: -70,
-    top: 110,
-    height: 380,
-    backgroundColor: 'rgba(255,255,255,0.52)',
-    transform: [{ rotate: '-10deg' }],
-  },
-  ambientGlow: {
-    position: 'absolute',
-    width: 330,
-    height: 330,
-    borderRadius: 999,
-    top: 172,
-    left: 24,
-    backgroundColor: 'rgba(22,73,154,0.10)',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  closeButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-  },
-  closeButtonText: {
-    color: theme.text,
-    fontSize: 34,
-    lineHeight: 36,
-    fontWeight: '300',
-  },
-  closeButtonTextLight: {
-    color: theme.text,
-  },
-  progressChip: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-  },
-  progressChipDark: {
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderColor: 'rgba(255,255,255,0.78)',
-  },
-  progressText: {
-    color: theme.gold,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  progressTextDark: {
-    color: theme.blue,
-  },
-  promptArea: {
-    alignItems: 'flex-start',
-    gap: 6,
-    paddingHorizontal: spacing.tight,
-  },
-  eyebrow: {
-    color: theme.blue,
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: -0.1,
-  },
-  eyebrowDark: {
-    color: theme.blue,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 31,
-    lineHeight: 37,
-    fontWeight: '900',
-    letterSpacing: -1.2,
-    textAlign: 'left',
-  },
-  titleDark: {
-    color: theme.text,
-  },
-  subtitle: {
-    color: theme.muted,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '700',
-    textAlign: 'left',
-  },
-  subtitleDark: {
-    color: theme.muted,
-  },
-  stageArea: {
-    flex: 1,
-  },
-  stageViewport: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingVertical: spacing.tight,
-  },
-  previewStageViewport: {
-    justifyContent: 'flex-start',
-    paddingVertical: 0,
-  },
-  selectionGallery: {
-    height: 382,
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  focusDeck: {
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.12)',
-    paddingHorizontal: 15,
-    paddingTop: 15,
-    paddingBottom: 12,
-    gap: 7,
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-  },
-  focusDeckHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-  focusDeckKicker: {
-    color: theme.gold,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  focusDeckTitle: {
-    marginTop: 4,
-    color: theme.text,
-    fontSize: 18,
-    lineHeight: 23,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  focusDeckCounter: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(32,52,95,0.94)',
-  },
-  focusDeckCounterValue: {
-    color: '#ffffff',
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  focusDeckCounterLabel: {
-    color: 'rgba(215,173,77,0.92)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  focusDeckRule: {
-    height: 1,
-    backgroundColor: 'rgba(32,52,95,0.10)',
-    marginBottom: 2,
-  },
-  focusDeckRow: {
-    minHeight: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.09)',
-    backgroundColor: 'rgba(247,249,253,0.74)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
+  topHeader: {
+    minHeight: 56,
     paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  focusDeckRowActive: {
-    backgroundColor: 'rgba(32,52,95,0.94)',
-    borderColor: 'rgba(215,173,77,0.56)',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-  },
-  focusDeckIndex: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(32,52,95,0.07)',
-  },
-  focusDeckIndexActive: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  focusDeckIndexText: {
-    color: 'rgba(32,52,95,0.40)',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-  },
-  focusDeckIndexTextActive: {
-    color: theme.gold,
-  },
-  focusDeckCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  focusDeckRowTitle: {
-    color: theme.text,
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-  },
-  focusDeckRowTitleActive: {
-    color: '#ffffff',
-  },
-  focusDeckRowBody: {
-    color: theme.muted,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-  },
-  focusDeckRowBodyActive: {
-    color: 'rgba(255,255,255,0.64)',
-  },
-  focusDeckCheck: {
-    color: 'rgba(32,52,95,0.36)',
-    fontSize: 9,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  focusDeckCheckActive: {
-    color: theme.gold,
-  },
-  selectionOrbit: {
-    position: 'absolute',
-    width: 286,
-    height: 286,
-    borderRadius: 143,
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.08)',
-    transform: [{ rotate: '-9deg' }],
-  },
-  selectionFocus: {
-    width: 154,
-    height: 154,
-    borderRadius: 77,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.10)',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.07,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 15 },
-  },
-  selectionFocusCount: {
-    color: theme.gold,
-    fontSize: 48,
-    lineHeight: 54,
-    fontWeight: '900',
-    letterSpacing: -2,
-  },
-  selectionFocusLabel: {
-    color: 'rgba(32,52,95,0.44)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  selectionTagCloud: {
-    position: 'absolute',
-    left: -20,
-    right: -20,
-    bottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 5,
-  },
-  selectionTagText: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    backgroundColor: 'rgba(22,73,154,0.08)',
-    color: '#20345f',
-    fontSize: 9.5,
-    lineHeight: 12,
-    fontWeight: '900',
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-  },
-  selectionBoard: {
-    width: 260,
-    height: 310,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.12)',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
-    transform: [{ rotate: '-2deg' }],
-  },
-  selectionBoardHeader: {
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  selectionBoardKicker: {
-    color: 'rgba(32,52,95,0.48)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  selectionBoardCount: {
-    color: theme.gold,
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  selectionBoardDivider: {
-    height: 1,
-    marginTop: 14,
-    backgroundColor: 'rgba(32,52,95,0.12)',
-  },
-  selectionEmptyText: {
-    position: 'absolute',
-    left: 42,
-    right: 42,
-    top: 136,
-    color: 'rgba(32,52,95,0.28)',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  selectionPin: {
-    position: 'absolute',
-    minWidth: 86,
-    height: 45,
-    borderRadius: 14,
-    backgroundColor: 'rgba(247,249,253,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  selectionPinActive: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderColor: 'rgba(32,52,95,0.28)',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-  },
-  selectionPinDot: {
-    position: 'absolute',
-    top: 6,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(32,52,95,0.18)',
-  },
-  selectionPinDotActive: {
-    backgroundColor: theme.gold,
-  },
-  selectionPinText: {
-    color: 'rgba(32,52,95,0.42)',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  selectionPinTextActive: {
-    color: '#20345f',
-  },
-  passportPage: {
-    width: 252,
-    height: 306,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.76)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.12)',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
-    transform: [{ rotate: '-2deg' }],
-  },
-  passportHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  passportKicker: {
-    color: 'rgba(32,52,95,0.48)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '900',
-    letterSpacing: 1.6,
-  },
-  passportCount: {
-    color: theme.gold,
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  passportDivider: {
-    height: 1,
-    marginTop: 14,
-    backgroundColor: 'rgba(32,52,95,0.12)',
-  },
-  passportEmptyText: {
-    position: 'absolute',
-    left: 42,
-    right: 42,
-    top: 136,
-    color: 'rgba(32,52,95,0.28)',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  passportStamp: {
-    position: 'absolute',
-    width: 82,
-    height: 52,
-    borderRadius: 18,
-    borderWidth: 1.4,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(32,52,95,0.58)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  passportStampActive: {
-    borderColor: '#20345f',
-    backgroundColor: 'rgba(215,173,77,0.10)',
-  },
-  passportStampText: {
-    color: 'rgba(32,52,95,0.38)',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  passportStampTextActive: {
-    color: '#20345f',
-  },
-  galleryTrackLine: {
-    position: 'absolute',
-    width: 270,
-    height: 270,
-    borderRadius: 135,
-    borderWidth: 1,
-    borderColor: 'rgba(18,24,38,0.08)',
-    transform: [{ rotate: '-8deg' }],
-  },
-  curatorCenterpiece: {
-    width: 142,
-    height: 142,
-    borderRadius: 71,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 7,
-    borderColor: '#f0f4fb',
-    shadowColor: '#111827',
-    shadowOpacity: 0.12,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-  },
-  curatorCenterCount: {
-    color: '#d7ad4d',
-    fontSize: 54,
-    lineHeight: 58,
-    fontWeight: '900',
-    letterSpacing: -2,
-  },
-  curatorCenterText: {
-    color: 'rgba(255,255,255,0.58)',
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  criterionMarker: {
-    position: 'absolute',
-    minWidth: 88,
-    minHeight: 54,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1.2,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(32,52,95,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 13,
-    gap: 2,
-  },
-  criterionMarkerActive: {
-    backgroundColor: 'rgba(32,52,95,0.94)',
-    borderColor: 'rgba(215,173,77,0.64)',
-    shadowColor: '#20345f',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 3,
-  },
-  criterionMarkerText: {
-    color: theme.text,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-  },
-  criterionMarkerTextActive: {
-    color: '#ffffff',
-  },
-  criterionMarkerWeight: {
-    color: '#9aa2af',
-    fontSize: 9.5,
-    fontWeight: '900',
-  },
-  criterionMarkerWeightActive: {
-    color: '#d7ad4d',
-  },
-  ratingStage: {
-    gap: 18,
-  },
-  starField: {
-    minHeight: 346,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  spark: {
-    position: 'absolute',
-    color: 'rgba(215,196,119,0.82)',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  ratingStampPlate: {
-    position: 'absolute',
-    width: 236,
-    height: 150,
-    borderRadius: 34,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#20345f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    zIndex: 1,
-  },
-  ratingStampRule: {
-    width: 116,
-    height: 1,
-    backgroundColor: '#20345f',
-  },
-  ratingStampScore: {
-    color: '#111827',
-    fontSize: 48,
-    lineHeight: 52,
-    fontWeight: '900',
-    letterSpacing: -2,
-  },
-  ratingStampCopy: {
-    color: '#20345f',
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  stampBackStar: {
-    position: 'absolute',
-    color: '#d7ad4d',
-    fontSize: 210,
-    lineHeight: 226,
-    fontWeight: '900',
-    textShadowColor: 'rgba(215,173,77,0.16)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 28,
-    zIndex: 0,
-  },
-  constellationNodeWrap: {
-    position: 'absolute',
+  headerBackButton: {
     width: 40,
     height: 40,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
   },
-  constellationLineSegment: {
-    position: 'absolute',
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(215,173,77,0.58)',
-    transformOrigin: 'left center',
-    zIndex: 4,
+  headerBackText: {
+    color: '#4D5866',
+    fontSize: 40,
+    lineHeight: 40,
+    fontWeight: '400',
+    marginTop: -4,
   },
-  constellationStar: {
-    color: 'rgba(22,73,154,0.14)',
-    fontSize: 23,
-    lineHeight: 28,
-    fontWeight: '900',
-  },
-  constellationStarActive: {
-    color: '#d7ad4d',
-    textShadowColor: 'rgba(215,173,77,0.34)',
-    textShadowOffset: { width: 0, height: 5 },
-    textShadowRadius: 12,
-  },
-  burstLayer: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    width: 1,
-    height: 1,
-    zIndex: 6,
-  },
-  burstStar: {
-    position: 'absolute',
-    color: theme.gold,
-    fontSize: 36,
-    lineHeight: 42,
-    fontWeight: '900',
-  },
-  impactStar: {
-    position: 'absolute',
-    color: 'rgba(246,216,120,0.48)',
-    fontSize: 176,
-    lineHeight: 188,
-    fontWeight: '900',
-    textShadowColor: 'rgba(215,173,77,0.26)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 30,
-    zIndex: 3,
-  },
-  impactRing: {
-    position: 'absolute',
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 1.4,
-    borderColor: 'rgba(215,173,77,0.30)',
-    zIndex: 2,
-  },
-  impactRingSoft: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    borderWidth: 1,
-    borderColor: 'rgba(22,73,154,0.18)',
-  },
-  ratingCaption: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    color: '#d7ad4d',
-    fontSize: 14,
-    fontWeight: '900',
-    zIndex: 6,
-  },
-  ratingButtons: {
-    flexDirection: 'row',
-    gap: 9,
-    paddingHorizontal: 8,
-  },
-  ratingButton: {
+  headerTitle: {
     flex: 1,
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  ratingButtonActive: {
-    backgroundColor: '#183374',
-    borderColor: '#183374',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 3,
-  },
-  ratingButtonText: {
-    color: theme.blue,
-    fontSize: 24,
-    lineHeight: 27,
-    fontWeight: '900',
-  },
-  ratingButtonTextActive: {
-    color: '#ffffff',
-  },
-  interactionStage: {
-    gap: 18,
-    justifyContent: 'center',
-  },
-  focusAnswerStage: {
-    gap: 16,
-    justifyContent: 'center',
-  },
-  focusAnswerSheet: {
-    minHeight: 330,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.12)',
-    paddingHorizontal: 22,
-    paddingVertical: 20,
-    alignItems: 'center',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-  },
-  focusAnswerTop: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  focusAnswerKicker: {
-    color: theme.gold,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
-  focusAnswerMode: {
-    color: 'rgba(32,52,95,0.42)',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  focusAnswerTitle: {
     color: theme.text,
-    fontSize: 25,
-    lineHeight: 30,
-    fontWeight: '900',
-    letterSpacing: -1,
-    textAlign: 'center',
-  },
-  focusAnswerBody: {
-    marginTop: 8,
-    color: theme.muted,
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0,
   },
-  focusAnswerArtifact: {
-    minWidth: 210,
-    minHeight: 112,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
+  headerRightSpacer: {
+    width: 40,
+    height: 40,
+    marginLeft: 'auto',
   },
-  focusAnswerStamp: {
-    minWidth: 160,
-    borderRadius: 22,
-    borderWidth: 1.4,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(32,52,95,0.40)',
-    backgroundColor: 'rgba(215,173,77,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    transform: [{ rotate: '-2deg' }],
-  },
-  focusAnswerStampValue: {
-    color: theme.text,
-    fontSize: 28,
-    lineHeight: 32,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  focusAnswerStampLabel: {
-    marginTop: 3,
-    color: 'rgba(32,52,95,0.50)',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  interactionCanvas: {
-    minHeight: 292,
+  headerHelpButton: {
+    marginLeft: 'auto',
+    minWidth: 54,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  interactionObjectLabel: {
-    position: 'absolute',
-    top: 18,
-    color: theme.blue,
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  interactionObject: {
-    minWidth: 220,
-    minHeight: 146,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  interactionValue: {
-    marginTop: 12,
-    color: theme.text,
-    fontSize: 38,
-    lineHeight: 44,
-    fontWeight: '900',
-    letterSpacing: -1.8,
-  },
-  interactionAction: {
-    marginTop: 5,
-    color: 'rgba(32,52,95,0.44)',
+  headerHelpText: {
+    color: '#6E7A88',
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: '900',
+    fontWeight: '600',
   },
-  metricStage: {
-    gap: 20,
-    justifyContent: 'center',
-  },
-  metricPoster: {
-    minHeight: 292,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metricPaper: {
-    width: 278,
-    height: 270,
-    borderRadius: 34,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-    borderWidth: 1,
-    borderColor: 'rgba(32,52,95,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 18 },
-  },
-  metricArtifactObject: {
-    width: 218,
-    height: 146,
-    borderRadius: 32,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  metricArtifactKicker: {
-    color: '#20345f',
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  metricArtifactValue: {
-    color: '#111827',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -1.2,
-  },
-  metricArtifactAction: {
-    position: 'absolute',
-    bottom: 46,
-    color: 'rgba(32,52,95,0.46)',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-  },
-  artifactBars: {
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  artifactSoundBar: {
-    width: 16,
-    borderRadius: 999,
-    backgroundColor: 'rgba(32,52,95,0.12)',
-  },
-  artifactSoundBarActive: {
-    backgroundColor: '#16499a',
-  },
-  artifactGauge: {
-    height: 56,
-    width: 96,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 9,
-    borderBottomWidth: 2,
-    borderBottomColor: 'rgba(216,79,65,0.22)',
-  },
-  artifactGaugeStep: {
-    width: 20,
-    borderRadius: 6,
-    backgroundColor: 'rgba(216,79,65,0.13)',
-  },
-  artifactGaugeStepActive: {
-    backgroundColor: '#d84f41',
-  },
-  artifactTicket: {
-    width: 112,
-    height: 50,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: 'rgba(123,92,53,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    overflow: 'hidden',
-  },
-  artifactTicketStub: {
-    position: 'absolute',
-    left: 30,
-    top: 0,
-    bottom: 0,
-    width: 1,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: 'rgba(123,92,53,0.18)',
-  },
-  artifactPunch: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(215,173,77,0.18)',
-  },
-  artifactPunchActive: {
-    backgroundColor: '#d7ad4d',
-  },
-  artifactChecklist: {
-    width: 112,
-    gap: 7,
-  },
-  artifactCheckRow: {
-    height: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    opacity: 0.42,
-  },
-  artifactCheckRowActive: {
-    opacity: 1,
-  },
-  artifactCheckBox: {
-    width: 13,
-    height: 13,
-    borderRadius: 4,
-    backgroundColor: '#226d68',
-  },
-  artifactCheckLine: {
-    flex: 1,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(34,109,104,0.36)',
-  },
-  artifactRibbon: {
-    width: 106,
-    height: 58,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  artifactRibbonBand: {
-    width: 22,
-    borderRadius: 12,
-    backgroundColor: 'rgba(32,52,95,0.14)',
-  },
-  artifactRibbonBandActive: {
-    backgroundColor: '#20345f',
-  },
-  artifactFile: {
-    width: 112,
-    height: 66,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(123,92,53,0.24)',
-    paddingTop: 18,
-    paddingHorizontal: 14,
-    gap: 7,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-  },
-  artifactFileTab: {
-    position: 'absolute',
-    left: 14,
-    top: 8,
+  headerCloseButton: {
     width: 36,
-    height: 10,
-    borderRadius: 6,
-    backgroundColor: 'rgba(123,92,53,0.22)',
-  },
-  artifactFileLine: {
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(123,92,53,0.16)',
-  },
-  artifactFileLineActive: {
-    backgroundColor: '#7b5c35',
-  },
-  metricStampSeal: {
-    width: 218,
-    height: 146,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#20345f',
-    backgroundColor: 'rgba(215,173,77,0.10)',
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
-  metricStampSealSoft: {
-    opacity: 0.52,
-  },
-  metricStampSealStrong: {
-    backgroundColor: 'rgba(215,173,77,0.18)',
-    borderWidth: 2.6,
-  },
-  metricStampKicker: {
-    color: '#20345f',
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  metricStampValue: {
-    color: '#111827',
-    fontSize: 42,
-    lineHeight: 48,
-    fontWeight: '900',
-    letterSpacing: -1.8,
-  },
-  metricStampCopy: {
-    color: '#20345f',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 1.8,
-  },
-  metricPaperLine: {
-    position: 'absolute',
-    left: 34,
-    right: 34,
-    bottom: 34,
-    height: 1,
-    backgroundColor: 'rgba(32,52,95,0.12)',
-  },
-  metricOptions: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 2,
-  },
-  metricOption: {
-    flex: 1,
-    minHeight: 74,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.80)',
-    borderWidth: 1.2,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(32,52,95,0.16)',
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricOptionActive: {
-    backgroundColor: '#20345f',
-    borderColor: 'rgba(215,173,77,0.62)',
-    shadowColor: '#20345f',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    elevation: 3,
-  },
-  metricOptionLabel: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  metricOptionLabelActive: {
-    color: '#d7ad4d',
-  },
-  metricOptionCopy: {
-    color: theme.muted,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  metricOptionCopyActive: {
-    color: 'rgba(255,255,255,0.72)',
-  },
-  noteStage: {
-    gap: spacing.related,
-  },
-  summaryPanel: {
-    borderRadius: 24,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.line,
-    padding: spacing.group,
-    gap: spacing.tight,
-  },
-  summaryLabel: {
-    color: theme.gold,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  summaryText: {
-    color: theme.text,
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '700',
-  },
-  noteInput: {
-    minHeight: 148,
-    borderRadius: 24,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.line,
-    paddingHorizontal: spacing.group,
-    paddingVertical: 16,
-    color: theme.text,
-    fontSize: 15,
-    lineHeight: 23,
-    fontWeight: '700',
-  },
-  inputMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  inputMetaText: {
-    color: theme.faint,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  previewStage: {
-    gap: spacing.related,
-  },
-  receiptStage: {
-    flex: 1,
-    paddingTop: 0,
-    alignItems: 'center',
-  },
-  receiptRoller: {
-    position: 'absolute',
-    top: 23,
-    width: 344,
-    height: 24,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
-    zIndex: 5,
-    shadowColor: '#111827',
-    shadowOpacity: 0.09,
-    shadowRadius: 11,
-    shadowOffset: { width: 0, height: 5 },
-  },
-  receiptRollerHighlight: {
-    position: 'absolute',
-    left: 28,
-    right: 28,
-    top: 4,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    zIndex: 6,
-  },
-  receiptRollerTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 24,
-    borderRadius: 14,
-    backgroundColor: 'rgba(24,24,29,0.72)',
-    zIndex: 4,
-  },
-  receiptRollerLeftCap: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: 32,
-    height: 24,
-    borderRadius: 14,
-    backgroundColor: 'rgba(24,24,29,0.72)',
-    zIndex: 5,
-  },
-  receiptRollerRightCap: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    width: 32,
-    height: 24,
-    borderRadius: 14,
-    backgroundColor: 'rgba(24,24,29,0.72)',
-    zIndex: 5,
-  },
-  receiptRollerShadow: {
-    position: 'absolute',
-    left: 42,
-    right: 42,
-    bottom: -14,
-    height: 18,
-    backgroundColor: 'rgba(17,24,39,0.055)',
-    shadowColor: '#111827',
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  receiptPaper: {
-    position: 'absolute',
-    top: 31,
-    width: 330,
-    height: 568,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 5,
-    borderTopRightRadius: 5,
-    zIndex: 8,
-    shadowColor: '#111827',
-    shadowOpacity: 0.08,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 14 },
-    overflow: 'hidden',
-  },
-  receiptScroll: {
-    flex: 1,
-  },
-  receiptScrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 110,
-    paddingBottom: 28,
-    gap: 15,
-  },
-  receiptPaperTexture: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(215,173,77,0.008)',
-  },
-  receiptPaperFiber: {
-    position: 'absolute',
-    height: 1,
-    backgroundColor: 'rgba(123,92,53,0.18)',
-  },
-  receiptHeader: {
-    gap: 7,
-  },
-  receiptOverline: {
-    color: 'rgba(18,24,38,0.50)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '700',
-    letterSpacing: 1.7,
-  },
-  receiptTitle: {
+  headerCloseText: {
     color: theme.text,
     fontSize: 22,
-    lineHeight: 27,
+    lineHeight: 25,
+    fontWeight: '400',
+    marginTop: -2,
+  },
+  screen: {
+    paddingHorizontal: 0,
+    gap: 14,
+    paddingTop: 18,
+  },
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.group,
+  },
+  titleGroup: {
+    flex: 1,
+    gap: 8,
+  },
+  pageTitle: {
+    color: theme.text,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '700',
     letterSpacing: -0.8,
   },
-  receiptMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  pageSubtitle: {
+    color: theme.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
   },
-  receiptMetaText: {
-    color: 'rgba(18,24,38,0.50)',
+  workflow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingTop: 2,
+  },
+  workflowItem: {
+    width: 58,
+    alignItems: 'center',
+    gap: 5,
+  },
+  workflowLine: {
+    position: 'absolute',
+    left: -29,
+    top: 18,
+    width: 58,
+    height: 1,
+    backgroundColor: '#E5E8EF',
+  },
+  workflowLineActive: {
+    backgroundColor: theme.blue,
+  },
+  workflowCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E5E8EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workflowCircleActive: {
+    backgroundColor: theme.blue,
+  },
+  workflowIcon: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  workflowIconActive: {
+    color: '#ffffff',
+  },
+  workflowLabel: {
+    color: '#9AA5B5',
     fontSize: 10,
     lineHeight: 13,
     fontWeight: '600',
+    textAlign: 'center',
   },
-  receiptDash: {
-    height: 1,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: 'rgba(18,24,38,0.18)',
+  workflowLabelActive: {
+    color: theme.blue,
   },
-  receiptConstellationBlock: {
-    height: 156,
-    position: 'relative',
-    justifyContent: 'center',
+  stagePanel: {
+    backgroundColor: theme.bg,
+    gap: 18,
+  },
+  cardTopBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  receiptConstellationLine: {
-    position: 'absolute',
-    height: 1.5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(215,173,77,0.45)',
-    transformOrigin: 'left center',
-  },
-  receiptConstellationStar: {
-    position: 'absolute',
-    color: theme.gold,
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '900',
-  },
-  receiptStamp: {
-    width: 122,
-    height: 78,
-    borderRadius: 20,
-    borderWidth: 1.4,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(32,52,95,0.46)',
+  cardIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '-7deg' }],
-    backgroundColor: 'rgba(255,255,255,0.36)',
   },
-  receiptStampScore: {
+  cardBackText: {
     color: theme.text,
-    fontSize: 29,
-    lineHeight: 33,
-    fontWeight: '700',
-    letterSpacing: -1.1,
+    fontSize: 30,
+    lineHeight: 30,
+    fontWeight: '500',
+    marginTop: -4,
   },
-  receiptStampCopy: {
-    color: '#20345f',
-    fontSize: 8,
-    lineHeight: 11,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-  },
-  receiptTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  receiptTotalLabel: {
+  cardCloseText: {
     color: theme.text,
-    fontSize: 17,
-    lineHeight: 21,
-    fontWeight: '700',
-    letterSpacing: -0.4,
+    fontSize: 23,
+    lineHeight: 26,
+    fontWeight: '500',
   },
-  receiptTotalValue: {
-    color: theme.text,
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  receiptInfoList: {
-    gap: 7,
-  },
-  receiptInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  promptBlock: {
+    paddingHorizontal: spacing.page,
+    paddingTop: 8,
     gap: 14,
   },
-  receiptInfoLabel: {
-    color: theme.text,
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+  guideTabs: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    backgroundColor: 'transparent',
+    gap: 10,
+    marginTop: -2,
+    paddingRight: 3,
   },
-  receiptInfoValue: {
-    color: 'rgba(18,24,38,0.56)',
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontWeight: '700',
-    textAlign: 'right',
+  guideTab: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
-  receiptSectionTitle: {
-    color: theme.text,
+  guideTabActive: {
+    backgroundColor: 'transparent',
+  },
+  guideTabText: {
+    color: '#8D98A6',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    letterSpacing: -0.15,
+  },
+  guideTabTextActive: {
+    color: theme.blue,
+  },
+  selectionCardActive: {
+    borderColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF',
+  },
+  stepBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    backgroundColor: '#E0F0FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  stepBadgeText: {
+    color: theme.blue,
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 13,
     fontWeight: '700',
-    letterSpacing: 1,
   },
-  receiptFocusRow: {
+  stageTitle: {
+    color: '#171A1F',
+    fontSize: 25,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: -0.55,
+  },
+  stageSubtitle: {
+    color: theme.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  stageBody: {
+    minHeight: 520,
+    paddingHorizontal: spacing.page,
+  },
+  pickList: {
+    gap: 12,
+  },
+  interviewLead: {
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 6,
+  },
+  interviewLeadEyebrow: {
+    color: theme.blue,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  interviewLeadTitle: {
+    color: '#111318',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  interviewLeadBody: {
+    color: '#657183',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+  pickCard: {
+    minHeight: 104,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7EDF5',
+    paddingHorizontal: 15,
+    paddingVertical: 17,
+  },
+  pickCardActive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#A9DDFF',
+  },
+  pickCardMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  pickCopy: {
+    flex: 1,
+    gap: 5,
+  },
+  pickTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pickTitle: {
+    color: '#111318',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  pickDescription: {
+    color: '#5F6C7D',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+  pickDetail: {
+    color: '#6E7A88',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  pickCheck: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.4,
+    borderColor: '#C9D2DE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickCheckActive: {
+    backgroundColor: '#23A9FF',
+    borderColor: '#23A9FF',
+  },
+  visitCard: {
+    minHeight: 50,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  visitText: {
+    flex: 1,
+    color: '#5F6C7D',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  visitAction: {
+    color: '#8D98A6',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  evaluateWrap: {
+    gap: 14,
+  },
+  evalInterviewHeader: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  evalProgressPill: {
+    alignSelf: 'flex-start',
+    minWidth: 48,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    backgroundColor: '#E7F3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  evalProgressText: {
+    color: theme.blue,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  evalInterviewLabel: {
+    color: '#657183',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  evalQuestionCard: {
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5ECF3',
+    padding: 16,
+    gap: 14,
+  },
+  evalReportNotice: {
+    minHeight: 42,
+    borderRadius: 9,
+    backgroundColor: '#EAF7FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  evalReportNoticeText: {
+    flex: 1,
+    color: '#4E5B6B',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  booleanSwitch: {
+    borderRadius: 10,
+    backgroundColor: '#F5F7FA',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  booleanQuestion: {
+    color: '#283445',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  booleanOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  booleanOption: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E9F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  booleanOptionActive: {
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
+  },
+  booleanOptionText: {
+    color: '#657183',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  booleanOptionTextActive: {
+    color: '#FFFFFF',
+  },
+  questionList: {
+    gap: 8,
+  },
+  questionScaleCard: {
+    borderRadius: 10,
+    backgroundColor: '#F6F9FC',
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  questionScaleTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  questionScaleDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: theme.blue,
+    marginTop: 6,
+  },
+  questionText: {
+    flex: 1,
+    color: '#2D3746',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '800',
+  },
+  fiveScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  fiveScaleDot: {
+    flex: 1,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4EAF2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fiveScaleDotActive: {
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
+  },
+  fiveScaleDotText: {
+    color: '#8B96A5',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  fiveScaleDotTextActive: {
+    color: '#FFFFFF',
+  },
+  fiveScaleLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  fiveScaleLabel: {
+    color: '#8B96A5',
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  evalQuestionHeader: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  evalQuestionCopy: {
+    flex: 1,
+    gap: 5,
+    paddingTop: 2,
+  },
+  evalQuestionTitle: {
+    color: '#111318',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  evalQuestionBody: {
+    color: '#6E7A88',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  feelingScale: {
+    gap: 9,
+  },
+  scaleTrack: {
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#F1F4F7',
+    padding: 4,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  scaleSegment: {
+    flex: 1,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scaleSegmentActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  scaleSegmentText: {
+    color: '#8B96A5',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  scaleSegmentTextActive: {
+    color: theme.blue,
+  },
+  scaleDots: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  scaleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D7DEE8',
+  },
+  scaleDotActive: {
+    backgroundColor: theme.blue,
+  },
+  memoryList: {
+    gap: 14,
+  },
+  memoryCard: {
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    gap: 13,
+  },
+  memoryCardActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  memoryCardMain: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  memoryCopy: {
+    flex: 1,
+    gap: 5,
+    paddingTop: 2,
+  },
+  memoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  memoryTitle: {
+    color: '#111318',
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  betaLabel: {
+    color: '#FF4971',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  memoryDescription: {
+    color: '#5F6C7D',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  memoryCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.3,
+    borderColor: '#C9D2DE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  memoryCheckActive: {
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
+  },
+  memoryExpanded: {
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF1F5',
+  },
+  memoryExpandedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
   },
-  receiptFocusLabel: {
+  memoryGuide: {
     flex: 1,
-    color: 'rgba(18,24,38,0.66)',
-    fontSize: 10.5,
-    lineHeight: 15,
-    fontWeight: '500',
-  },
-  receiptFocusValue: {
-    color: theme.text,
-    fontSize: 10.5,
-    lineHeight: 15,
-    fontWeight: '700',
-  },
-  receiptParagraph: {
-    color: 'rgba(18,24,38,0.68)',
-    fontSize: 10.5,
+    color: '#657183',
+    fontSize: 12,
     lineHeight: 17,
-    fontWeight: '500',
-  },
-  receiptBars: {
-    height: 76,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-    paddingTop: 10,
-  },
-  receiptBarWrap: {
-    flex: 1,
-    minWidth: 2,
-    justifyContent: 'flex-end',
-  },
-  receiptBar: {
-    flex: 1,
-    backgroundColor: '#1f2430',
-    borderRadius: 2,
-    opacity: 0.78,
-  },
-  receiptAxis: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  receiptAxisText: {
-    color: 'rgba(18,24,38,0.42)',
-    fontSize: 9,
-    lineHeight: 11,
     fontWeight: '600',
   },
-  receiptFinishPanel: {
-    marginTop: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+  keywordCounter: {
+    color: theme.blue,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '800',
+  },
+  keywordGroup: {
+    gap: 8,
+  },
+  keywordGroupTitle: {
+    color: '#3E4856',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  keywordWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  keywordChip: {
+    minHeight: 32,
+    borderRadius: 9,
+    backgroundColor: '#F2F5F8',
+    paddingHorizontal: 11,
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'center',
   },
-  receiptFinishTitle: {
-    color: theme.text,
-    fontSize: 15,
-    lineHeight: 19,
+  keywordChipActive: {
+    backgroundColor: theme.blueSoft,
+  },
+  keywordChipText: {
+    color: '#667386',
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
-    letterSpacing: -0.4,
   },
-  receiptFinishText: {
-    color: theme.muted,
-    fontSize: 10,
-    lineHeight: 15,
-    fontWeight: '500',
-    textAlign: 'center',
+  keywordChipTextActive: {
+    color: theme.blue,
   },
-  completionCard: {
-    minHeight: 386,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    padding: spacing.group,
-    justifyContent: 'flex-end',
-    gap: 13,
+  checkCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#C8D2E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  checkCircleActive: {
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
+  },
+  checkText: {
+    color: '#ffffff',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  itemIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 13,
+    backgroundColor: '#F0F5FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  itemIconBoxActive: {
+    backgroundColor: '#EEF7FF',
+  },
+  inhaIconSheet: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#20345f',
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
   },
-  completionConstellation: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.72,
-  },
-  completionConstellationLine: {
+  inhaIconLines: {
     position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 7,
+    gap: 3,
+    opacity: 0.35,
+  },
+  inhaIconLine: {
     height: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(215,173,77,0.26)',
-    transformOrigin: 'left center',
+    borderRadius: 1,
+    backgroundColor: '#7C8A9B',
   },
-  completionConstellationStar: {
+  inhaIconLineShort: {
+    width: '58%',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#7C8A9B',
+  },
+  inhaIconBadge: {
     position: 'absolute',
-    color: theme.gold,
-    fontSize: 24,
-    lineHeight: 28,
+    right: 5,
+    bottom: 5,
+    minWidth: 19,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#DCE5EF',
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inhaIconBadgeText: {
+    color: '#718092',
+    fontSize: 6,
+    lineHeight: 8,
     fontWeight: '900',
   },
-  completionStamp: {
+  inhaIconBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  evalIconMiniText: {
     position: 'absolute',
-    left: 42,
-    top: 54,
-    width: 232,
-    height: 146,
-    borderRadius: 34,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#20345f',
+    right: 8,
+    bottom: 7,
+    color: theme.blue,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '800',
+  },
+  categoryGrid: {
+    gap: 18,
+  },
+  optionList: {
+    gap: 10,
+  },
+  optionRow: {
+    minHeight: 52,
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#E8EDF3',
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  optionRowActive: {
+    borderColor: '#D5E2FF',
+    backgroundColor: '#FFFFFF',
+  },
+  optionIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  optionIconActive: {
+    backgroundColor: '#EFF5FF',
+  },
+  optionCheck: {
+    width: 19,
+    height: 19,
+    borderRadius: 9.5,
+    borderWidth: 1.4,
+    borderColor: '#C8D2E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionCheckText: {
+    color: '#ffffff',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
+  },
+  optionText: {
+    flex: 1,
+    color: '#657183',
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  moodTile: {
+    minHeight: 66,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.46)',
   },
-  completionStampScore: {
-    color: '#111827',
-    fontSize: 50,
-    lineHeight: 54,
-    fontWeight: '900',
-    letterSpacing: -2.4,
+  moodTileActive: {
+    borderColor: theme.blue,
+    backgroundColor: '#FFFFFF',
   },
-  completionStampCopy: {
-    color: '#20345f',
-    fontSize: 12,
+  moodIcon: {
+    color: '#8D98A6',
+    fontSize: 11,
     lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 1.6,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
-  previewBadgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  previewBadge: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(22,73,154,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(22,73,154,0.10)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  previewBadgeText: {
-    color: '#20345f',
-    fontSize: 10.5,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  archiveStrip: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1,
-    borderColor: theme.line,
-    padding: spacing.related,
-    gap: 6,
-  },
-  archiveStripTitle: {
+  moodText: {
     color: theme.text,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  archiveStripText: {
-    color: theme.muted,
     fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '800',
-  },
-  previewPoster: {
-    borderRadius: 28,
-    backgroundColor: '#183374',
-    padding: spacing.group,
-    gap: spacing.related,
-  },
-  previewLabel: {
-    color: theme.gold,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  previewRating: {
-    color: theme.gold,
-    fontSize: 54,
-    lineHeight: 58,
-    fontWeight: '900',
-    letterSpacing: -3,
-  },
-  previewSummary: {
-    color: theme.text,
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  previewContent: {
-    color: theme.muted,
-    fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 15,
     fontWeight: '700',
   },
-  weightList: {
-    borderRadius: 22,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.line,
-    padding: spacing.related,
+  moodTextActive: {
+    color: theme.text,
+  },
+  noteWrap: {
     gap: 8,
   },
-  weightListTitle: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: '900',
+  noteGuide: {
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 5,
   },
-  weightRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.related,
-  },
-  weightRowLabel: {
-    flex: 1,
-    color: theme.muted,
-    fontSize: 11,
+  noteGuideTitle: {
+    color: '#111318',
+    fontSize: 15,
+    lineHeight: 21,
     fontWeight: '800',
   },
-  weightRowValue: {
-    color: theme.blue,
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  weightHigh: {
-    color: theme.blue,
-  },
-  weightLow: {
-    color: theme.faint,
-  },
-  semesterText: {
-    marginTop: 4,
-    color: theme.faint,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  footer: {
-    gap: spacing.related,
-  },
-  previewFooter: {
-    paddingHorizontal: spacing.page,
-    paddingTop: 4,
-  },
-  hintText: {
-    minHeight: 18,
-    color: theme.muted,
+  noteGuideBody: {
+    color: '#667386',
     fontSize: 12,
     lineHeight: 18,
+    fontWeight: '600',
+  },
+  noteInput: {
+    minHeight: 180,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    color: theme.text,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '500',
+  },
+  shortNoteInput: {
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.line,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    color: theme.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  countText: {
+    alignSelf: 'flex-end',
+    color: theme.muted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  previewConfirm: {
+    gap: 18,
+  },
+  previewIntro: {
+    gap: 8,
+  },
+  previewIntroTitle: {
+    color: '#171A1F',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+  },
+  previewIntroBody: {
+    color: '#4E5968',
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '500',
+  },
+  previewLedgerCard: {
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  previewLedgerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  previewLedgerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EDF2F7',
+  },
+  previewLedgerTitle: {
+    flex: 1,
+    color: '#1A1D22',
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  previewLedgerTitleMuted: {
+    color: '#697585',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '600',
+  },
+  previewDivider: {
+    height: 1,
+    backgroundColor: '#E4E9EF',
+  },
+  previewMetricRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  previewMetricIcon: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewMetricCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  previewMetricLabel: {
+    color: '#27303C',
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '700',
-    textAlign: 'center',
   },
-  hintTextDark: {
-    color: 'rgba(247,240,227,0.62)',
+  previewMetricHelper: {
+    color: '#7A8798',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '500',
   },
-  hintGhost: {
-    minHeight: 18,
+  previewMetricValue: {
+    maxWidth: '44%',
+    color: '#171A1F',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  previewQuotePanel: {
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  previewQuoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  previewQuoteLabel: {
+    color: '#171A1F',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  previewQuoteBadge: {
+    minWidth: 42,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F6FF',
+  },
+  previewQuoteBadgeText: {
+    color: '#27A8FF',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  previewQuoteText: {
+    color: '#2D3440',
+    fontSize: 14,
+    lineHeight: 24,
+    fontWeight: '500',
+  },
+  previewFootnotes: {
+    gap: 7,
+    paddingHorizontal: 2,
+  },
+  previewFootnote: {
+    color: '#4F5B6A',
+    fontSize: 12,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  previewNotice: {
+    minHeight: 54,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#F5F7F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  previewNoticeText: {
+    flex: 1,
+    color: '#2A3038',
+    fontSize: 13,
+    lineHeight: 21,
+    fontWeight: '600',
+  },
+  progressBars: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.page,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  progressBar: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#E6EBF0',
+  },
+  progressBarActive: {
+    backgroundColor: theme.blue,
   },
   errorText: {
-    minHeight: 18,
-    color: '#ff766d',
+    color: theme.red,
     fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '800',
-    textAlign: 'center',
+    lineHeight: 17,
+    fontWeight: '700',
+    paddingHorizontal: spacing.page,
   },
   footerActions: {
     flexDirection: 'row',
-    gap: spacing.related,
+    gap: 12,
   },
   secondaryButton: {
-    flex: 0.8,
-    minHeight: 54,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
-  },
-  previewSecondaryButton: {
-    minHeight: 48,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-  },
-  secondaryGhost: {
-    flex: 0.8,
-  },
-  secondaryButtonText: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: '700',
+    flex: 1,
+    minHeight: 52,
+    backgroundColor: '#ffffff',
+    borderColor: '#E5E8EF',
   },
   primaryButton: {
-    flex: 1.3,
-    minHeight: 54,
-    borderRadius: 999,
-    backgroundColor: 'rgba(24,51,116,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#16499a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-  },
-  previewPrimaryButton: {
     minHeight: 48,
-    backgroundColor: '#182f70',
+    borderRadius: 8,
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
   },
-  primaryButtonDisabled: {
-    opacity: 0.72,
+  infoNotice: {
+    minHeight: 48,
+    marginHorizontal: 0,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: theme.line,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
-  primaryButtonText: {
-    color: '#ffffff',
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.page,
+    paddingTop: 20,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  bottomSummary: {
+    height: 28,
+    paddingHorizontal: 0,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bottomSummaryLabel: {
+    color: '#657183',
     fontSize: 14,
+    lineHeight: 20,
     fontWeight: '700',
+  },
+  bottomSummaryText: {
+    color: '#4A5563',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    letterSpacing: -0.15,
+  },
+  infoIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.4,
+    borderColor: theme.faint,
+    color: theme.faint,
+    textAlign: 'center',
+    lineHeight: 16,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  infoText: {
+    flex: 1,
+    color: theme.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
   },
   fullState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.page,
     gap: spacing.group,
-  },
-  fullStateOrb: {
-    width: 92,
-    height: 92,
-    borderRadius: 999,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fullStateOrbText: {
-    color: theme.gold,
-    fontSize: 28,
-    fontWeight: '900',
-  },
-  fullStateTitle: {
-    color: theme.text,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -1,
-    textAlign: 'center',
+    paddingHorizontal: spacing.page,
   },
   fullStateBody: {
     color: theme.muted,
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 21,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  duplicateState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    paddingHorizontal: spacing.page,
+  },
+  duplicateTitle: {
+    color: '#111318',
+    fontSize: 23,
+    lineHeight: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.25,
+  },
+  duplicateButton: {
+    minWidth: 132,
+    minHeight: 56,
+    borderRadius: 10,
+    backgroundColor: theme.blue,
+    borderColor: theme.blue,
+  },
+  submittedSafeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  submittedContent: {
+    flexGrow: 1,
+    paddingBottom: 28,
+    backgroundColor: '#FFFFFF',
+  },
+  submittedHero: {
+    minHeight: 244,
+    paddingHorizontal: spacing.page,
+    paddingTop: 92,
+    alignItems: 'center',
+    gap: 18,
+    backgroundColor: '#FFFFFF',
+  },
+  submittedTitle: {
+    color: '#101216',
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  submittedBanner: {
+    minHeight: 42,
+    borderRadius: 6,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F6FF',
+  },
+  submittedBannerText: {
+    color: '#27A8FF',
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: '700',
     textAlign: 'center',
   },
-  fullStateButton: {
-    minWidth: 220,
-    borderRadius: 999,
-    backgroundColor: theme.gold,
-    paddingHorizontal: 18,
-    paddingVertical: 15,
-    alignItems: 'center',
+  submittedSummary: {
+    paddingHorizontal: spacing.page,
+    paddingTop: 28,
+    gap: 24,
+    backgroundColor: '#FFFFFF',
   },
-  fullStateButtonText: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: '900',
+  submittedSummaryRow: {
+    gap: 8,
+  },
+  submittedSummaryLabel: {
+    color: '#171A1F',
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  submittedSummaryValue: {
+    color: '#2C3440',
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '500',
+  },
+  submittedCallout: {
+    minHeight: 82,
+    marginHorizontal: spacing.page,
+    marginTop: 22,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    backgroundColor: '#F5F7F9',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  submittedCalloutIcon: {
+    width: 20,
+    height: 20,
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submittedCalloutText: {
+    flex: 1,
+    color: '#2A3038',
+    fontSize: 13,
+    lineHeight: 21,
+    fontWeight: '600',
+  },
+  submittedTooltip: {
+    minHeight: 58,
+    marginHorizontal: spacing.page,
+    marginTop: 18,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4C5563',
+    position: 'relative',
+  },
+  submittedTooltipText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  submittedTooltipTail: {
+    position: 'absolute',
+    left: 34,
+    bottom: -10,
+    width: 18,
+    height: 18,
+    backgroundColor: '#4C5563',
+    transform: [{ rotate: '45deg' }],
+  },
+  submittedPrimaryButton: {
+    minHeight: 58,
+    marginHorizontal: spacing.page,
+    marginTop: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#24AAFF',
+  },
+  submittedPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '800',
+  },
+  submittedSecondaryButton: {
+    minHeight: 58,
+    marginHorizontal: spacing.page,
+    marginTop: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E7EBF0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  submittedSecondaryButtonText: {
+    color: '#697585',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '800',
   },
 });

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
 
 interface InsetSectionProps {
   title?: string;
@@ -32,9 +33,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.inkBlue,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: -0.5,
+    letterSpacing: -0.25,
   },
   caption: {
     color: colors.textMuted,
@@ -42,14 +43,10 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   card: {
-    borderRadius: 22,
+    borderRadius: spacing.radius,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
   },
 });

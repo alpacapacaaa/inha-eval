@@ -89,10 +89,11 @@ public class ReviewService {
     }
 
     // 2. 특정 강의의 리뷰 목록 조회 (정렬 기능 지원!)
+    // viewerEmail: 로그인 유저면 이메일, 비로그인이면 null. likedByMe 계산에만 사용.
     @Transactional(readOnly = true)
-    public List<ReviewResponse> getReviewsByCourseId(Long courseId, String sortBy) {
+    public List<ReviewResponse> getReviewsByCourseId(Long courseId, String sortBy, String viewerEmail) {
         List<Review> reviews;
-        
+
         // 프론트에서 넘어온 "sortBy" 글자에 따라 우리가 아까 Repository에 심어둔 필살기 쿼리 중 하나를 고릅니다.
         if ("highest".equalsIgnoreCase(sortBy)) {
             reviews = reviewRepository.findByCourseIdOrderByRatingDesc(courseId);// 별점 높은 순
@@ -104,8 +105,17 @@ public class ReviewService {
             reviews = reviewRepository.findByCourseIdOrderByCreatedAtDesc(courseId); // 기본값: 최신순
         }
 
+        // 비로그인이면 viewer=null → likedByMe는 항상 false로 반환됨
+        Member viewer = viewerEmail == null
+                ? null
+                : memberRepository.findByEmail(viewerEmail).orElse(null);
+
         return reviews.stream()
-                .map(ReviewResponse::from)
+                .map(review -> ReviewResponse.from(
+                        review,
+                        // 리뷰마다 좋아요 레코드가 있는지 확인해서 likedByMe를 채움
+                        viewer != null && reviewLikeRepository.findByMemberAndReview(viewer, review).isPresent()
+                ))
                 .toList();
     }
 
@@ -151,6 +161,7 @@ public class ReviewService {
                             // 이미 좋아요 누른 상태 → 취소
                             reviewLikeRepository.delete(like);
                             review.removeLike();
+                            revokeLikePointIfEligible(review, member);
                         },
                         () -> {
                             // 좋아요 누르지 않은 상태 → 추가
@@ -159,7 +170,42 @@ public class ReviewService {
                                     .review(review)
                                     .build());
                             review.addLike();
+                            awardLikePointIfEligible(review, member);
                         }
                 );
+    }
+
+    // 좋아요를 누르면 강의평 작성자에게 포인트 1점 지급.
+    // 자기 자신의 리뷰에 좋아요를 눌렀을 때는 포인트를 주지 않음 (어뷰징 방지).
+    private void awardLikePointIfEligible(Review review, Member liker) {
+        Member author = review.getMember();
+        if (author.getId().equals(liker.getId())) {
+            return;
+        }
+
+        author.addPoints(1);
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(author)
+                .review(review)
+                .description("강의평 좋아요 (" + review.getCourse().getName() + ")")
+                .points(1)
+                .build());
+    }
+
+    // 좋아요를 취소하면 지급했던 포인트를 회수.
+    // PointHistoryService에서 동일 과목 좋아요 내역을 합산하기 때문에 +1/-1 쌍이 남아도 괜찮음.
+    private void revokeLikePointIfEligible(Review review, Member liker) {
+        Member author = review.getMember();
+        if (author.getId().equals(liker.getId())) {
+            return;
+        }
+
+        author.deductPoints(1);
+        pointHistoryRepository.save(PointHistory.builder()
+                .member(author)
+                .review(review)
+                .description("강의평 좋아요 (" + review.getCourse().getName() + ")")
+                .points(-1)
+                .build());
     }
 }

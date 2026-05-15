@@ -1,4 +1,4 @@
-import { Course } from '../../types/models';
+import { Course, CourseStats } from '../../types/models';
 import { apiRequest } from './client';
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30분
@@ -45,4 +45,14 @@ export function getVerifiedCourses() {
 
 export function getGrowthCourses() {
   return apiRequest<Course[]>('/api/courses/growth');
+}
+
+export function getCourseStats(courseId: number) {
+  return apiRequest<CourseStats>(`/api/courses/${courseId}/stats`);
+}
+
+export async function getDepartments(): Promise<string[]> {
+  const courses = await getAllCourses();
+  const unique = [...new Set(courses.map((c) => c.department).filter(Boolean))];
+  return unique.sort((a, b) => a.localeCompare(b, 'ko'));
 }

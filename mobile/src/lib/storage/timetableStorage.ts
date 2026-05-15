@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 const CART_KEY = 'inhaeval_timetable_cart_ids';
 const SELECTED_KEY = 'inhaeval_timetable_selected_ids';
+const PINNED_KEY = 'inhaeval_timetable_pinned_ids';
 
 async function loadIds(key: string) {
   const raw = await SecureStore.getItemAsync(key);
@@ -26,3 +27,5 @@ export const loadTimetableCartIds = () => loadIds(CART_KEY);
 export const saveTimetableCartIds = (ids: string[]) => saveIds(CART_KEY, ids);
 export const loadSelectedTimetableIds = () => loadIds(SELECTED_KEY);
 export const saveSelectedTimetableIds = (ids: string[]) => saveIds(SELECTED_KEY, ids);
+export const loadPinnedTimetableIds = () => loadIds(PINNED_KEY);
+export const savePinnedTimetableIds = (ids: string[]) => saveIds(PINNED_KEY, ids);

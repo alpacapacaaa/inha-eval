@@ -24,17 +24,10 @@ export function FeatureCard({ eyebrow, title, description }: FeatureCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    padding: 22,
-    gap: 12,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.08,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 2,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    gap: 10,
   },
   topRow: {
     flexDirection: 'row',
@@ -43,16 +36,14 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.74)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderRadius: 5,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
   badgeText: {
     color: colors.primary,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.7,
     textTransform: 'uppercase',
@@ -64,13 +55,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 16,
     fontWeight: '800',
-    lineHeight: 25,
+    lineHeight: 22,
   },
   description: {
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

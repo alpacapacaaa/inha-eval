@@ -3,6 +3,8 @@ package com.inhaeval.backend.util;
 import com.inhaeval.backend.domain.Course;
 import com.inhaeval.backend.repository.CourseRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -11,6 +13,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "app.seed.test-courses", havingValue = "true")
 public class DataInitializer implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
 
     private final CourseRepository courseRepository;
 
@@ -58,6 +62,6 @@ public class DataInitializer implements CommandLineRunner {
                 .reviewCount(120)
                 .build());
 
-        System.out.println("✅ 테스트용 강의 데이터 3개가 생성되었습니다!");
+        log.info("테스트용 강의 데이터 3개가 생성되었습니다.");
     }
 }
