@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PressableScale } from '../components/ui';
+import { PressableScale, StatePanel } from '../components/ui';
 import { getNotices } from '../lib/api/notices';
 import { AppNavigation } from '../navigation/AppNavigator';
 import { colors } from '../theme/colors';
@@ -65,7 +65,11 @@ export function NotificationsScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {!loading && error ? (
+      {loading ? (
+        <View style={styles.emptyWrap}>
+          <StatePanel label="공지사항을 불러오는 중입니다." loading />
+        </View>
+      ) : !loading && error ? (
         <View style={styles.emptyWrap}>
           <View style={styles.bellCircle}>
             <Ionicons name="alert-circle-outline" size={48} color={colors.primary} />
