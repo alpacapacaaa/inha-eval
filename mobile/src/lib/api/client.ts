@@ -7,6 +7,7 @@ import {
 } from '../storage/tokenStorage';
 
 const DEFAULT_ERROR_MESSAGE = '요청 처리 중 오류가 발생했습니다.';
+const REQUEST_TIMEOUT_MS = 10000;
 let unauthorizedHandler: (() => Promise<void> | void) | null = null;
 
 export class ApiError extends Error {
@@ -51,13 +52,22 @@ async function refreshAccessToken() {
     return null;
   }
 
-  const response = await fetch(`${apiConfig.baseUrl}/api/auth/refresh`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ refreshToken }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiConfig.baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+      signal: controller.signal,
+    });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     return null;
@@ -91,12 +101,19 @@ export async function apiRequest<T>(path: string, init?: RequestInit, retried = 
   const requestUrl = `${apiConfig.baseUrl}${path}`;
   let response: Response;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     response = await fetch(requestUrl, {
       ...init,
       headers,
+      signal: controller.signal,
     });
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('요청 시간이 초과되었습니다.');
+    }
     if (error instanceof Error && error.message.includes('Network request failed')) {
       throw new Error(
         `서버에 연결하지 못했습니다. 현재 주소: ${apiConfig.baseUrl}. Expo를 완전히 다시 시작했는지 확인해주세요.`,
@@ -104,6 +121,8 @@ export async function apiRequest<T>(path: string, init?: RequestInit, retried = 
     }
 
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!response.ok) {

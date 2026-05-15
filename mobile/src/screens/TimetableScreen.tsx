@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PressableScale, StatePanel } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllCourses } from '../lib/api/courses';
 import {
+  formatPeriodRange,
   PERIODS,
   TIMETABLE_BY_COURSE_ID,
   TIMETABLE_DAYS,
@@ -28,6 +29,16 @@ interface Props {
 }
 
 type TimetableCourse = Course & { slots: TimetableSlot[] };
+
+type SelectedEntry = {
+  courseId: string;
+  courseName: string;
+  professor: string;
+  day: TimetableDay;
+  startPeriod: number;
+  endPeriod: number;
+  location: string;
+};
 
 type ComboTone = 'blue' | 'green' | 'lilac' | 'amber' | 'rose';
 
@@ -73,6 +84,7 @@ export function TimetableScreen({ navigation }: Props) {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -212,11 +224,23 @@ export function TimetableScreen({ navigation }: Props) {
     loadSelectedTimetableIds().then((sIds) => setSelectedIds(sIds.filter((id) => cartIdsRef.current.includes(id))));
   }, [navigation.currentRoute.name]);
 
-  const handleBlockPress = async (courseId: string, courseName: string) => {
-    const nextIds = selectedIds.filter((id) => id !== courseId);
+  const handleBlockPress = (entry: SelectedEntry) => {
+    setSelectedEntry(entry);
+  };
+
+  const handleDeleteFromTimetable = async () => {
+    if (!selectedEntry) return;
+    const nextIds = selectedIds.filter((id) => id !== selectedEntry.courseId);
     setSelectedIds(nextIds);
     await saveSelectedTimetableIds(nextIds);
-    setMessage(`${courseName} 제거됨`);
+    setSelectedEntry(null);
+    setMessage(`${selectedEntry.courseName} 제거됨`);
+  };
+
+  const handleViewReviews = () => {
+    if (!selectedEntry) return;
+    setSelectedEntry(null);
+    navigation.navigate({ name: 'CourseDetail', courseId: Number(selectedEntry.courseId) });
   };
 
   if (isLoading) {
@@ -254,6 +278,37 @@ export function TimetableScreen({ navigation }: Props) {
         </View>
 
         <TimetableBoard entries={placedEntries} onBlockPress={handleBlockPress} />
+
+        {selectedEntry ? (
+          <Modal transparent animationType="slide" onRequestClose={() => setSelectedEntry(null)}>
+            <Pressable style={styles.sheetOverlay} onPress={() => setSelectedEntry(null)} />
+            <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetCourseName}>{selectedEntry.courseName}</Text>
+              <Text style={styles.sheetProfessor}>{selectedEntry.professor}</Text>
+              <View style={styles.sheetInfoList}>
+                <View style={styles.sheetInfoRow}>
+                  <Text style={styles.sheetInfoLabel}>강의실</Text>
+                  <Text style={styles.sheetInfoValue}>{selectedEntry.location || '미정'}</Text>
+                </View>
+                <View style={styles.sheetInfoRow}>
+                  <Text style={styles.sheetInfoLabel}>시간</Text>
+                  <Text style={styles.sheetInfoValue}>
+                    {selectedEntry.day}요일 {formatPeriodRange(selectedEntry.startPeriod, selectedEntry.endPeriod)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.sheetActions}>
+                <PressableScale style={styles.sheetReviewButton} onPress={handleViewReviews}>
+                  <Text style={styles.sheetReviewButtonText}>강의평 보기</Text>
+                </PressableScale>
+                <PressableScale style={styles.sheetDeleteButton} onPress={handleDeleteFromTimetable}>
+                  <Text style={styles.sheetDeleteButtonText}>삭제</Text>
+                </PressableScale>
+              </View>
+            </View>
+          </Modal>
+        ) : null}
 
         <View style={styles.comboSectionHeader}>
           <Text style={styles.comboSectionTitle}>추천 조합</Text>
@@ -389,7 +444,7 @@ function TimetableBoard({
   onBlockPress,
 }: {
   entries: Array<TimetableSlot & { backgroundColor: string; textColor: string; courseId: string; courseName: string; professor: string }>;
-  onBlockPress: (courseId: string, courseName: string) => void;
+  onBlockPress: (entry: SelectedEntry) => void;
 }) {
   const visiblePeriods = getVisiblePeriods(entries);
   const lastVisiblePeriod = visiblePeriods[visiblePeriods.length - 1]?.period ?? DEFAULT_VISIBLE_PERIOD;
@@ -434,7 +489,15 @@ function TimetableBoard({
                       backgroundColor: entry.backgroundColor,
                     },
                   ]}
-                  onPress={() => onBlockPress(entry.courseId, entry.courseName)}
+                  onPress={() => onBlockPress({
+                    courseId: entry.courseId,
+                    courseName: entry.courseName,
+                    professor: entry.professor,
+                    day: entry.day,
+                    startPeriod: entry.startPeriod,
+                    endPeriod: entry.endPeriod,
+                    location: entry.location,
+                  })}
                 >
                   <Text style={[styles.blockTitle, { color: entry.textColor }]} numberOfLines={2}>
                     {entry.courseName}
@@ -847,6 +910,21 @@ const styles = StyleSheet.create({
   comboCredits:   { color: colors.textSecondary, fontSize: 15, fontWeight: '700', letterSpacing: -0.35 },
   comboFooterRule:{ width: 1, height: 16, backgroundColor: 'rgba(101,115,138,0.26)' },
   comboConfidence:{ fontSize: 15, fontWeight: '800', letterSpacing: -0.35 },
+
+  sheetOverlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet:              { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: spacing.page, paddingTop: 12 },
+  sheetHandle:        { width: 36, height: 4, borderRadius: 2, backgroundColor: '#D1D9E3', alignSelf: 'center', marginBottom: 20 },
+  sheetCourseName:    { color: colors.text, fontSize: 18, fontWeight: '800', letterSpacing: -0.4, lineHeight: 24 },
+  sheetProfessor:     { marginTop: 4, color: colors.textSecondary, fontSize: 14, fontWeight: '600', letterSpacing: -0.2 },
+  sheetInfoList:      { marginTop: 20, gap: 10 },
+  sheetInfoRow:       { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sheetInfoLabel:     { width: 44, color: colors.textMuted, fontSize: 13, fontWeight: '600', letterSpacing: -0.2 },
+  sheetInfoValue:     { flex: 1, color: colors.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  sheetActions:       { marginTop: 24, flexDirection: 'row', gap: 10 },
+  sheetReviewButton:  { flex: 1, minHeight: 50, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  sheetReviewButtonText:{ color: '#ffffff', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sheetDeleteButton:  { minHeight: 50, paddingHorizontal: 20, borderRadius: 12, backgroundColor: '#F4F7FB', alignItems: 'center', justifyContent: 'center' },
+  sheetDeleteButtonText:{ color: '#E0404A', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
 
   pagerDots:    { flexDirection: 'row', justifyContent: 'center', gap: 9, marginTop: -4 },
   pagerDot:     { width: 8, height: 8, borderRadius: 4, backgroundColor: '#dfe6f0' },
