@@ -1,21 +1,24 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Course } from '../types/models';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { PressableScale } from './ui';
 
 type Variant = 'hero' | 'tall' | 'medium' | 'compact';
 type ScopeKind = 'general' | 'major' | 'other';
 type MoodKey = 'easy' | 'heavy' | 'strict' | 'hard' | 'practical' | 'balanced';
 
 const HEIGHTS: Record<Variant, number> = {
-  hero: 96,
-  tall: 92,
-  medium: 88,
-  compact: 82,
+  hero: 116,
+  tall: 110,
+  medium: 104,
+  compact: 92,
 };
 
-const SCOPE_META: Record<ScopeKind, { label: string; color: string }> = {
-  general: { label: '교양', color: '#226d68' },
-  major: { label: '내 전공', color: '#d84f41' },
-  other: { label: '타전공', color: '#16499a' },
+const SCOPE_META: Record<ScopeKind, { label: string; color: string; background: string }> = {
+  general: { label: '교양', color: '#226d68', background: '#e6f6ef' },
+  major: { label: '전공필수', color: '#d96816', background: '#fff1e6' },
+  other: { label: '전공선택', color: '#6f7c8c', background: '#f1f4f7' },
 };
 
 const MOOD_META: Record<MoodKey, { label: string; note: string }> = {
@@ -48,59 +51,86 @@ export function CoursePosterCard({
   const scopeMeta = SCOPE_META[scope];
   const mood = getCourseMood(course, preview);
   const moodMeta = MOOD_META[mood];
-  const bg = index % 3 === 0 ? '#f7f2e8' : index % 3 === 1 ? '#eef5ef' : '#edf3fb';
   const creditsLabel = course.credits ? `${course.credits}학점` : course.type || '강의';
   const reviewCount = course.reviewCount || 0;
-  const displayIndex = String(index + 1).padStart(2, '0');
+  const moodTags = getMoodTags(course, mood, reviewCount);
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={`${course.name}, ${course.professor}, 평점 ${course.rating.toFixed(1)}`}
-      style={({ pressed }) => [
+      style={[
         styles.card,
         { minHeight: HEIGHTS[variant] },
-        pressed ? styles.cardPressed : null,
       ]}
       onPress={onPress}
     >
-      <View style={[styles.courseThumb, { backgroundColor: bg }]}>
-        <View style={[styles.thumbAccent, { backgroundColor: scopeMeta.color }]} />
-        <Text style={styles.thumbIndex}>{displayIndex}</Text>
-      </View>
-
       <View style={styles.courseContent}>
-        <View style={styles.courseTitleRow}>
-          <Text style={styles.courseTitle} numberOfLines={1}>
+        <View style={styles.cardHeader}>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, { backgroundColor: scopeMeta.background }]}>
+              <Text style={[styles.badgeText, { color: scopeMeta.color }]} numberOfLines={1}>
+                {scopeMeta.label}
+              </Text>
+            </View>
+            {reviewCount > 0 ? (
+              <View style={styles.reviewBadge}>
+                <Text style={styles.reviewBadgeText}>후기 {reviewCount}+</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.ratingWrap}>
+            <Text style={styles.starText}>★</Text>
+            <Text style={styles.ratingText}>{course.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.titleBlock}>
+          <Text style={styles.courseTitle} numberOfLines={2}>
             {course.name}
           </Text>
-          <Text style={styles.ratingText}>{course.rating.toFixed(1)}</Text>
+          <Text style={styles.professorText} numberOfLines={1}>
+            {course.professor} 교수 · {course.department}
+          </Text>
         </View>
 
-        <Text style={styles.professorText} numberOfLines={1}>
-          {course.professor} · {course.department}
-        </Text>
-
         <View style={styles.metaRow}>
-          <View style={[styles.scopeDot, { backgroundColor: scopeMeta.color }]} />
-          <Text style={[styles.scopeText, { color: scopeMeta.color }]} numberOfLines={1}>
-            {scopeMeta.label}
-          </Text>
-          <Text style={styles.metaText} numberOfLines={1}>
-            {creditsLabel}
-          </Text>
-          <Text style={styles.metaText} numberOfLines={1}>
-            리뷰 {reviewCount}
-          </Text>
-          <Text style={styles.moodText} numberOfLines={1}>
-            {moodMeta.label}
-          </Text>
+          {moodTags.map((tag) => (
+            <View key={tag} style={styles.metaPill}>
+              <Text style={styles.metaPillText} numberOfLines={1}>{tag}</Text>
+            </View>
+          ))}
+          <View style={styles.metaPill}>
+            <Text style={styles.metaPillText} numberOfLines={1}>{creditsLabel}</Text>
+          </View>
         </View>
       </View>
 
-      <Text style={styles.moreText}>⋮</Text>
-    </Pressable>
+    </PressableScale>
   );
+}
+
+function getMoodTags(course: Course, mood: MoodKey, reviewCount: number) {
+  const tags = new Set<string>();
+  const moodMeta = MOOD_META[mood];
+
+  if (reviewCount > 80) {
+    tags.add('후기 많음');
+  }
+
+  tags.add(moodMeta.label);
+
+  const text = `${course.difficulty} ${course.workload} ${course.attendance} ${course.grading}`.toLowerCase();
+  if (text.includes('시험') || text.includes('exam')) {
+    tags.add('시험 체크');
+  } else if (text.includes('과제') || text.includes('assignment')) {
+    tags.add('과제 체크');
+  } else if (text.includes('실습') || text.includes('practice')) {
+    tags.add('실습 위주');
+  }
+
+  return Array.from(tags).slice(0, 3);
 }
 
 function getCourseMood(course: Course, preview?: string): MoodKey {
@@ -134,136 +164,111 @@ function getCourseScope(course: Course, userDepartment?: string): ScopeKind {
   return 'other';
 }
 
-function normalizePreview(preview: string) {
-  const trimmed = preview.trim().replace(/\s+/g, ' ');
-  return trimmed.length > 46 ? `${trimmed.slice(0, 46)}...` : trimmed;
-}
-
-function getEditorialNote(course: Course, mood: MoodKey, preview?: string) {
-  if (preview?.trim()) {
-    return normalizePreview(preview);
-  }
-
-  switch (mood) {
-    case 'easy':
-      return '수강 부담을 낮추고 싶은 날 먼저 열어볼 만한 강의입니다.';
-    case 'heavy':
-      return '과제와 준비 시간을 미리 계산하고 고르면 만족도가 높아집니다.';
-    case 'strict':
-      return '출결과 운영 방식이 선택의 핵심이 되는 강의입니다.';
-    case 'hard':
-      return '난이도보다 수업 흐름과 평가 방식을 먼저 확인해보세요.';
-    case 'practical':
-      return '수업 후 남는 결과물과 실습 경험을 기대할 수 있습니다.';
-    default:
-      return `${course.department}에서 많이 비교되는 균형형 수강 후보입니다.`;
-  }
-}
 
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(18,24,38,0.055)',
-  },
-  cardPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.992 }],
-  },
-  courseThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: spacing.radius,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.card,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
-  },
-  thumbAccent: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    right: -12,
-    bottom: -10,
-    opacity: 0.22,
-  },
-  thumbIndex: {
-    color: 'rgba(18,24,38,0.62)',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    borderColor: colors.cardBorder,
   },
   courseContent: {
     flex: 1,
-    gap: 4,
+    gap: 10,
     minWidth: 0,
   },
-  courseTitleRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  courseTitle: {
+  badgeRow: {
     flex: 1,
-    color: '#121826',
-    fontSize: 15,
-    lineHeight: 19,
-    fontWeight: '700',
-    letterSpacing: -0.45,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  ratingText: {
-    color: '#121826',
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
+  badge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
   },
-  professorText: {
-    color: '#65738a',
+  badgeText: {
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  reviewBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    backgroundColor: colors.primarySoft,
+  },
+  reviewBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  ratingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  starText: {
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  titleBlock: {
+    gap: 4,
+  },
+  courseTitle: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  ratingText: {
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    letterSpacing: -0.35,
+  },
+  professorText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+    letterSpacing: -0.3,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     flexWrap: 'wrap',
   },
-  scopeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  metaPill: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: colors.fill,
   },
-  scopeText: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '700',
-  },
-  metaText: {
-    color: '#65738a',
-    fontSize: 10,
-    lineHeight: 12,
+  metaPillText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: '600',
-  },
-  moodText: {
-    color: '#8d96a6',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '600',
-  },
-  moreText: {
-    color: 'rgba(18,24,38,0.38)',
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: '700',
-    paddingLeft: 2,
+    letterSpacing: -0.2,
   },
 });

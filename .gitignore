@@ -13,6 +13,7 @@ backend/target/
 .DS_Store
 *.iml
 .idea/
+.cluade/
 
 # Python / Crawler
 crawler/venv/

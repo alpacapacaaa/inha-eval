@@ -1,5 +1,10 @@
 import { apiConfig } from './config';
-import { getAccessToken } from '../storage/tokenStorage';
+import {
+  getAccessToken,
+  getRefreshToken,
+  saveAccessToken,
+  saveRefreshToken,
+} from '../storage/tokenStorage';
 
 const DEFAULT_ERROR_MESSAGE = '요청 처리 중 오류가 발생했습니다.';
 let unauthorizedHandler: (() => Promise<void> | void) | null = null;
@@ -17,6 +22,11 @@ export function setUnauthorizedHandler(handler: (() => Promise<void> | void) | n
   unauthorizedHandler = handler;
 }
 
+interface RefreshResponse {
+  accessToken?: string;
+  refreshToken?: string;
+}
+
 function parseErrorMessage(data: unknown): string {
   if (!data || typeof data !== 'object') {
     return DEFAULT_ERROR_MESSAGE;
@@ -31,7 +41,42 @@ function parseErrorMessage(data: unknown): string {
   return typeof firstText === 'string' ? firstText : DEFAULT_ERROR_MESSAGE;
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+function isAuthFailure(status: number) {
+  return status === 401 || status === 403;
+}
+
+async function refreshAccessToken() {
+  const refreshToken = await getRefreshToken();
+  if (!refreshToken) {
+    return null;
+  }
+
+  const response = await fetch(`${apiConfig.baseUrl}/api/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as RefreshResponse;
+  if (!data.accessToken) {
+    return null;
+  }
+
+  await saveAccessToken(data.accessToken);
+  if (data.refreshToken) {
+    await saveRefreshToken(data.refreshToken);
+  }
+
+  return data.accessToken;
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const token = await getAccessToken();
   const headers = new Headers(init?.headers);
 
@@ -71,8 +116,17 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
     const message = parseErrorMessage(errorData);
 
-    if (response.status === 401 && unauthorizedHandler) {
-      await unauthorizedHandler();
+    if (isAuthFailure(response.status)) {
+      const refreshedToken = retried ? null : await refreshAccessToken();
+      if (refreshedToken) {
+        return apiRequest<T>(path, init, true);
+      }
+
+      if (unauthorizedHandler) {
+        await unauthorizedHandler();
+      }
+
+      throw new ApiError(response.status, '로그인이 만료되었습니다. 다시 로그인해주세요.');
     }
 
     throw new ApiError(response.status, message);
