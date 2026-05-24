@@ -162,7 +162,7 @@ public class MemberService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = CustomException.class)
     public LoginResponse refreshAccessToken(String token) {
         RefreshToken refreshToken = refreshTokenRepository.findByToken(token)
                 .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."));
