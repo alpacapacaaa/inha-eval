@@ -4,6 +4,7 @@ import com.inhaeval.backend.dto.*;
 import com.inhaeval.backend.service.EmailVerificationService;
 import com.inhaeval.backend.service.PhoneVerificationService;
 import com.inhaeval.backend.service.MemberService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -84,5 +85,15 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         return ResponseEntity.ok(memberService.refreshAccessToken(request.getRefreshToken()));
+    }
+
+    // 로그아웃: AT를 블랙리스트에 등록하고 RT 삭제
+    @DeleteMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        String bearer = request.getHeader("Authorization");
+        if (bearer != null && bearer.startsWith("Bearer ")) {
+            memberService.logout(bearer.substring(7));
+        }
+        return ResponseEntity.noContent().build();
     }
 }

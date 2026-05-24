@@ -1,3 +1,11 @@
+// SSL Pinning 적용 시: react-native-ssl-pinning 라이브러리 필요
+// 프로덕션에서는 fetch 대신 아래처럼 교체해 MITM을 차단한다.
+//
+//   import { fetch as pinnedFetch } from 'react-native-ssl-pinning';
+//   pinnedFetch(url, { ...init, sslPinning: { certs: ['api.inha-eval.com'] } })
+//
+// 개발 환경(Proxyman/Charles)에서는 핀을 제거해야 하므로
+// EXPO_PUBLIC_DISABLE_SSL_PINNING=true 환경변수로 on/off를 분리한다.
 import { apiConfig } from './config';
 import {
   getAccessToken,
