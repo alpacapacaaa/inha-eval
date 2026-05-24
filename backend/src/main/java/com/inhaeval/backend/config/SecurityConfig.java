@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.Customizer;
@@ -23,11 +24,12 @@ import java.util.Arrays;
 import java.util.List;
 
 @Configuration
-@EnableWebSecurity // 모든 URL 요청이 Spring Security의 필터체인을 거치도록 하는 어노테이션
+@EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtUtil jwtUtil;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${app.allowed-origins:http://localhost:5173,https://inha-eval.vercel.app,https://inha-eval.com,https://www.inha-eval.com}")
     private String allowedOrigins;
@@ -47,7 +49,7 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/reviews/course/**").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(new JwtFilter(jwtUtil),
+                .addFilterBefore(new JwtFilter(jwtUtil, redisTemplate),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

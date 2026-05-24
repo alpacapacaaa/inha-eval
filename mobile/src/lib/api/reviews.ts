@@ -26,15 +26,22 @@ export interface CreateReviewPayload {
   examInfo?: string;
   recommendFor?: string[];
   notRecommendFor?: string[];
-  diffScore?: number;
-  teachingScore?: number;
-  gradScore?: number;
-  workScore?: number;
-  prerequisiteScore?: number;
-  depthScore?: number;
-  timeInvestScore?: number;
-  attScore?: number;
-  pastExamScore?: number;
+  badges?: string[];
+  examMidtermInfo?: string;
+  examFinalInfo?: string;
+  examAssignmentInfo?: string;
+  examQuizInfo?: string;
+  pastExamHelpfulness?: string;
+  scopePredictability?: string;
+  studyResources?: string[];
+  problemStyles?: string[];
+  examPrepTip?: string;
+  diffScore?: number | null;
+  gradScore?: number | null;
+  workScore?: number | null;
+  prerequisiteScore?: number | null;
+  depthScore?: number | null;
+  pastExamScore?: number | null;
 }
 
 export function createReview(payload: CreateReviewPayload) {

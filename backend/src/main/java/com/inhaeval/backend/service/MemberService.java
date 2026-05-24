@@ -13,6 +13,7 @@ import com.inhaeval.backend.repository.RefreshTokenRepository;
 import com.inhaeval.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import com.inhaeval.backend.repository.PointHistoryRepository;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +38,7 @@ public class MemberService {
     private final MailService mailService;
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -114,6 +117,7 @@ public class MemberService {
         return SignupResponse.builder()
                 .accessToken(jwtUtil.generateToken(member.getEmail()))
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
 
@@ -153,6 +157,7 @@ public class MemberService {
                 .accessToken(accessToken)
                 .refreshToken(refreshTokenValue)
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
     }
@@ -199,6 +204,7 @@ public class MemberService {
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshToken)
                 .nickname(member.getNickname())
+                .department(member.getDepartment())
                 .points(member.getPoints())
                 .build();
     }
@@ -216,7 +222,7 @@ public class MemberService {
     @Transactional
     public void resetPassword(PasswordResetRequest request) {
         if (!request.getNewPassword().equals(request.getNewPasswordConfirm())) {
-            throw new CustomException(HttpStatus.BAD_REQUEST, "비밀번호가 일치하지 않습니다.");
+            throw new CustomException(HttpStatus.BAD_REQUEST, "두 비밀번호가 일치하지 않습니다.");
         }
 
         PhoneVerification verification = phoneVerificationRepository.findTopByPhoneNumberAndIsUsedTrueOrderByIdDesc(request.getPhoneNumber())
@@ -330,5 +336,39 @@ public class MemberService {
         }
 
         member.deactivate();
+    }
+
+    // TODO: 데모용 임시 메서드 — 배포 후 반드시 제거
+    // Before: @Transactional 없음 → delete 커밋 후 예외 → RT 영구 삭제
+    public void breakRefreshNoTransaction(String token) {
+        RefreshToken rt = refreshTokenRepository.findByToken(token)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰"));
+        refreshTokenRepository.delete(rt);
+        refreshTokenRepository.flush();  // 즉시 커밋
+        throw new RuntimeException("서버 장애 시뮬레이션 — @Transactional 없음");
+    }
+
+    // After: @Transactional → delete + 예외 → 전체 롤백 → RT 보존
+    @Transactional
+    public void breakRefreshWithTransaction(String token) {
+        RefreshToken rt = refreshTokenRepository.findByToken(token)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰"));
+        refreshTokenRepository.delete(rt);
+        throw new RuntimeException("서버 장애 시뮬레이션 — @Transactional 있음 → 롤백");
+    }
+
+    // 로그아웃: AT의 jti를 Redis 블랙리스트에 등록 + RT 삭제
+    @Transactional
+    public void logout(String accessToken) {
+        if (!jwtUtil.validateToken(accessToken)) return;
+
+        String jti = jwtUtil.getJti(accessToken);
+        long remainingExpiry = jwtUtil.getRemainingExpiry(accessToken);
+        if (remainingExpiry > 0) {
+            redisTemplate.opsForValue().set("blacklist:" + jti, "logout", remainingExpiry, TimeUnit.MILLISECONDS);
+        }
+
+        String email = jwtUtil.getEmail(accessToken);
+        refreshTokenRepository.deleteByEmail(email);
     }
 }

@@ -46,15 +46,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.inkBlue,
-    fontSize: 33,
-    lineHeight: 38,
-    fontWeight: '700',
-    letterSpacing: -1,
+    fontSize: 24,
+    lineHeight: 31,
+    fontWeight: '800',
+    letterSpacing: -0.45,
   },
   description: {
     color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 20,
   },
   accessory: {
     alignItems: 'flex-end',
