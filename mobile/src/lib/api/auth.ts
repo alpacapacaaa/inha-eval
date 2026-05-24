@@ -172,3 +172,7 @@ export function deleteAccount(password: string) {
     body: JSON.stringify({ password }),
   });
 }
+
+export function logout() {
+  return apiRequest<void>('/api/auth/logout', { method: 'DELETE' });
+}

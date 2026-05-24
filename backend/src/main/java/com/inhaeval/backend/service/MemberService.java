@@ -13,6 +13,7 @@ import com.inhaeval.backend.repository.RefreshTokenRepository;
 import com.inhaeval.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import com.inhaeval.backend.repository.PointHistoryRepository;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +38,7 @@ public class MemberService {
     private final MailService mailService;
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -321,5 +324,20 @@ public class MemberService {
         }
 
         member.deactivate();
+    }
+
+    // 로그아웃: AT의 jti를 Redis 블랙리스트에 등록 + RT 삭제
+    @Transactional
+    public void logout(String accessToken) {
+        if (!jwtUtil.validateToken(accessToken)) return;
+
+        String jti = jwtUtil.getJti(accessToken);
+        long remainingExpiry = jwtUtil.getRemainingExpiry(accessToken);
+        if (remainingExpiry > 0) {
+            redisTemplate.opsForValue().set("blacklist:" + jti, "logout", remainingExpiry, TimeUnit.MILLISECONDS);
+        }
+
+        String email = jwtUtil.getEmail(accessToken);
+        refreshTokenRepository.deleteByEmail(email);
     }
 }
