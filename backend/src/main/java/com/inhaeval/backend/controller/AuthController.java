@@ -87,6 +87,19 @@ public class AuthController {
         return ResponseEntity.ok(memberService.refreshAccessToken(request.getRefreshToken()));
     }
 
+    // TODO: 데모용 임시 엔드포인트 — 배포 후 반드시 제거
+    @PostMapping("/test/break-no-tx")
+    public ResponseEntity<Void> breakNoTx(@RequestBody RefreshRequest request) {
+        memberService.breakRefreshNoTransaction(request.getRefreshToken());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/test/break-with-tx")
+    public ResponseEntity<Void> breakWithTx(@RequestBody RefreshRequest request) {
+        memberService.breakRefreshWithTransaction(request.getRefreshToken());
+        return ResponseEntity.ok().build();
+    }
+
     // 로그아웃: AT를 블랙리스트에 등록하고 RT 삭제
     @DeleteMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request) {

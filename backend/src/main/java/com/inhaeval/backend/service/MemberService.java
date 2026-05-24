@@ -326,6 +326,25 @@ public class MemberService {
         member.deactivate();
     }
 
+    // TODO: 데모용 임시 메서드 — 배포 후 반드시 제거
+    // Before: @Transactional 없음 → delete 커밋 후 예외 → RT 영구 삭제
+    public void breakRefreshNoTransaction(String token) {
+        RefreshToken rt = refreshTokenRepository.findByToken(token)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰"));
+        refreshTokenRepository.delete(rt);
+        refreshTokenRepository.flush();  // 즉시 커밋
+        throw new RuntimeException("서버 장애 시뮬레이션 — @Transactional 없음");
+    }
+
+    // After: @Transactional → delete + 예외 → 전체 롤백 → RT 보존
+    @Transactional
+    public void breakRefreshWithTransaction(String token) {
+        RefreshToken rt = refreshTokenRepository.findByToken(token)
+                .orElseThrow(() -> new CustomException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰"));
+        refreshTokenRepository.delete(rt);
+        throw new RuntimeException("서버 장애 시뮬레이션 — @Transactional 있음 → 롤백");
+    }
+
     // 로그아웃: AT의 jti를 Redis 블랙리스트에 등록 + RT 삭제
     @Transactional
     public void logout(String accessToken) {
